@@ -4,10 +4,14 @@ Datakontrakt-utfyller: et skjema for å opprette en datakontrakt uten å skrive 
 
 Kjør med:  streamlit run app.py
 
-Appen importerer validate_contracts.py og validerer mens du fyller ut, så
-skjemaet og CI-gaten håndhever nøyaktig de samme reglene. Alt som er valgfritt i
-utkastfasen er skjult bak «Valgfritt»-seksjoner, slik at førstegangsbrukere ser
-de ~8 feltene en `draft` faktisk krever.
+Appen importerer validate_contracts.py, så skjemaet og CI-gaten håndhever nøyaktig
+de samme reglene. Alt som er valgfritt i utkastfasen er skjult bak
+«Valgfritt»-seksjoner, slik at førstegangsbrukere ser de ~8 feltene en `draft`
+faktisk krever.
+
+Valideringen kjører først når brukeren ber om den — «Verifiser» eller nedlasting.
+Et tomt skjema bryter naturligvis alle regler, og å møte en førstegangsbruker med
+fjorten feil før første tastetrykk er ikke veiledning, det er støy.
 """
 
 from __future__ import annotations
@@ -290,11 +294,17 @@ if "columns" not in st.session_state:
     st.session_state.columns = empty_columns()
 if "loaded" not in st.session_state:
     st.session_state.loaded = {}
+# Valideringen er en handling, ikke en tilstand skjemaet starter i. Når den først
+# er utløst holder den seg levende, slik at brukeren ser feilene forsvinne mens
+# de rettes.
+if "verified" not in st.session_state:
+    st.session_state.verified = False
 
 st.title("📄 Datakontrakt-utfyller")
 st.caption(
-    "Fyll ut skjemaet og last ned en ferdig ODCS-datakontrakt. "
-    "Kontrakten valideres mens du skriver, med de samme reglene som CI bruker."
+    "Fyll ut skjemaet og last ned en ferdig ODCS-datakontrakt. Når du er ferdig, "
+    "trykk **Verifiser** nederst — da sjekkes kontrakten mot de samme reglene "
+    "som CI bruker."
 )
 
 # Statuspanelet bor i sidepanelet, men fylles først etter at skjemaet er lest.
@@ -317,6 +327,7 @@ with st.sidebar:
             st.session_state.loaded = data
             props = (data.get("schema") or [{}])[0].get("properties") or []
             st.session_state.columns = columns_from_yaml(props)
+            st.session_state.verified = False
             st.rerun()
 
     opplastet = st.file_uploader("…eller last opp en YAML-fil", type=["yml", "yaml"])
@@ -325,6 +336,7 @@ with st.sidebar:
         st.session_state.loaded = data
         props = (data.get("schema") or [{}])[0].get("properties") or []
         st.session_state.columns = columns_from_yaml(props)
+        st.session_state.verified = False
         st.rerun()
 
     if st.session_state.loaded:
@@ -332,6 +344,7 @@ with st.sidebar:
         if st.button("Tøm skjemaet", use_container_width=True):
             st.session_state.loaded = {}
             st.session_state.columns = empty_columns()
+            st.session_state.verified = False
             st.rerun()
 
     st.divider()
@@ -549,68 +562,93 @@ with st.container():
             value=_authdefs.get("implementation", "") or "",
             placeholder="https://github.com/…/models/serving/kunde.sql")
 
-# ── Forhåndsvisning og validering ─────────────────────────────────────────────
+# ── Verifisering ──────────────────────────────────────────────────────────────
+# Kontrakten bygges på hver rerun — det er billig og gir YAML-visningen noe å
+# vise — men valideringen presenteres ikke før brukeren har bedt om den.
 contract = build_contract(f, redigert)
-result = validate_contract(copy.deepcopy(contract), Path(f"{f['name'] or 'kontrakt'}.yml"))
 yaml_text = yaml.safe_dump(contract, allow_unicode=True, sort_keys=False, width=88)
-
 filnavn = f"{(f['name'] or 'datakontrakt').strip()}.yml"
 
-# Kort status i sidepanelet: den følger deg nedover skjemaet uten å ta bredde
-# fra kolonnetabellen. Selve avvikslisten står under skjemaet, der det er plass
-# til å lese den.
-with status_slot:
-    st.subheader("Status")
-    c1, c2 = st.columns(2)
-    c1.metric("Feil", len(result.errors))
-    c2.metric("Advarsler", len(result.warnings))
-    st.progress(result.score / 100, text=f"Score {result.score}/100")
-
-    if result.errors:
-        st.error(f"{len(result.errors)} ting må rettes.")
-    else:
-        st.success("Kontrakten er gyldig.")
-
-    st.download_button(
-        "⬇️ Last ned kontrakten", data=yaml_text.encode("utf-8"),
-        file_name=filnavn, mime="application/x-yaml",
-        use_container_width=True, type="primary",
-        disabled=bool(result.errors))
-    if result.errors:
-        st.caption("Nedlasting åpner seg når feilene er rettet — se listen nederst.")
-    else:
-        st.caption(f"Legg filen i `contracts/` og commit den. Navn: `{filnavn}`")
-
-# ── Avvik og YAML ─────────────────────────────────────────────────────────────
 st.divider()
+st.subheader("Verifiser kontrakten")
+st.caption(
+    "Når du er ferdig med å fylle ut, sjekk kontrakten mot regelverket. "
+    "Det er samme kontroll som kjører i CI når kontrakten legges inn i repoet."
+)
+if st.button("✓ Verifiser", type="primary"):
+    st.session_state.verified = True
 
-if f["status"] in ("proposed", "draft"):
-    st.info(
-        "Status er **draft**. Krav som forutsetter en ferdig leveranse "
-        "(SLA, kvalitetsregler, lenke til koden) er advarsler nå, og blir "
-        "blokkerende når du setter status til **active**."
-    )
+if not st.session_state.verified:
+    # Ingen validering ennå: ikke bygg opp en liste over feil i et skjema
+    # brukeren fortsatt er i gang med å fylle ut.
+    st.info("Kontrakten er ikke verifisert ennå. Trykk **Verifiser** for å se "
+            "hva som mangler før den kan brukes.")
+    result = None
+else:
+    result = validate_contract(copy.deepcopy(contract),
+                              Path(f"{f['name'] or 'kontrakt'}.yml"))
 
-if result.errors:
-    st.subheader(f"Må rettes ({len(result.errors)})")
-    for finding in result.errors:
-        st.markdown(
-            f"<div style='border-left:3px solid #d13438;padding:.4rem .7rem;"
-            f"margin-bottom:.4rem;background:#fdf2f2'>"
-            f"<b>{DIM_LABELS.get(finding.dimension, finding.dimension)}</b> — "
-            f"{finding.message}<br>"
-            f"<code style='font-size:.8em;color:#666'>{finding.field_path}</code>"
-            f"</div>",
-            unsafe_allow_html=True,
+    if f["status"] in ("proposed", "draft"):
+        st.info(
+            "Status er **draft**. Krav som forutsetter en ferdig leveranse "
+            "(SLA, kvalitetsregler, lenke til koden) er advarsler nå, og blir "
+            "blokkerende når du setter status til **active**."
         )
 
-if result.warnings:
-    with st.expander(f"Anbefalinger ({len(result.warnings)})"):
-        for finding in result.warnings:
+    if result.errors:
+        st.subheader(f"Må rettes ({len(result.errors)})")
+        for finding in result.errors:
             st.markdown(
-                f"**{DIM_LABELS.get(finding.dimension, finding.dimension)}** — "
-                f"{finding.message}  \n`{finding.field_path}`"
+                f"<div style='border-left:3px solid #d13438;padding:.4rem .7rem;"
+                f"margin-bottom:.4rem;background:#fdf2f2'>"
+                f"<b>{DIM_LABELS.get(finding.dimension, finding.dimension)}</b> — "
+                f"{finding.message}<br>"
+                f"<code style='font-size:.8em;color:#666'>{finding.field_path}</code>"
+                f"</div>",
+                unsafe_allow_html=True,
             )
+
+    if result.warnings:
+        with st.expander(f"Anbefalinger ({len(result.warnings)})"):
+            for finding in result.warnings:
+                st.markdown(
+                    f"**{DIM_LABELS.get(finding.dimension, finding.dimension)}** — "
+                    f"{finding.message}  \n`{finding.field_path}`"
+                )
 
 with st.expander("Se YAML-en"):
     st.code(yaml_text, language="yaml")
+
+# ── Statuspanel ───────────────────────────────────────────────────────────────
+# Skrives inn i plassen som ble reservert i sidepanelet øverst. Tallene vises
+# bare når kontrakten er verifisert; før det er de bare et mål på hvor langt
+# brukeren har kommet i utfyllingen, og det er ikke det de ser ut som.
+with status_slot:
+    st.subheader("Status")
+
+    if result is None:
+        st.caption("Ikke verifisert ennå.")
+        st.button("✓ Verifiser", key="verify_sidebar", use_container_width=True,
+                  on_click=lambda: st.session_state.update(verified=True))
+        st.caption("Nedlasting åpner seg når kontrakten er verifisert uten feil.")
+    else:
+        c1, c2 = st.columns(2)
+        c1.metric("Feil", len(result.errors))
+        c2.metric("Advarsler", len(result.warnings))
+        st.progress(result.score / 100, text=f"Score {result.score}/100")
+
+        if result.errors:
+            st.error(f"{len(result.errors)} ting må rettes.")
+        else:
+            st.success("Kontrakten er gyldig.")
+
+        st.download_button(
+            "⬇️ Last ned kontrakten", data=yaml_text.encode("utf-8"),
+            file_name=filnavn, mime="application/x-yaml",
+            use_container_width=True, type="primary",
+            disabled=bool(result.errors))
+        if result.errors:
+            st.caption("Nedlasting åpner seg når feilene er rettet — se listen "
+                       "under skjemaet.")
+        else:
+            st.caption(f"Legg filen i `contracts/` og commit den. Navn: `{filnavn}`")

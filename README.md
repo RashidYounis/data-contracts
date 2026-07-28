@@ -13,7 +13,7 @@ pip install -r requirements-app.txt
 streamlit run app.py
 ```
 
-Appen åpner i nettleseren på `http://localhost:8501`. Du fyller ut skjemaet, ser feil og advarsler oppdatere seg mens du skriver, og laster ned en ferdig YAML-fil du legger i `contracts/`. Den bruker samme validator som CI, så en kontrakt som er grønn i appen er grønn i CI.
+Appen åpner i nettleseren på `http://localhost:8501`. Du fyller ut skjemaet, trykker **Verifiser** når du er ferdig, og laster ned en ferdig YAML-fil du legger i `contracts/`. Den bruker samme validator som CI, så en kontrakt som er grønn i appen er grønn i CI.
 
 Foretrekker du å redigere YAML direkte:
 
@@ -61,7 +61,9 @@ streamlit run app.py
 
 Appen er delt i de fem spørsmålene en kontrakt svarer på — hva er dette, hvem eier det, hvor ligger dataen, hva leveres, hvor beskyttet er det. Kolonnene redigeres som et regneark, med nedtrekksmenyer for klassifisering og kategorisering, slik at man ikke trenger å kjenne maskinverdiene: skjemaet viser «Strengt fortrolig» og skriver `strengt_fortrolig`. Hva hver verdi betyr står i tegnforklaringen under tabellen.
 
-I sidepanelet står en levende status: antall feil, antall advarsler og score, oppdatert for hvert tastetrykk. Avvikene listes under skjemaet, med hvilken dimensjon og hvilket felt de gjelder. Nedlastingsknappen er sperret så lenge kontrakten har feil, så en fil som kommer ut av appen validerer også i CI. Appen importerer `validate_contract` fra `validate_contracts.py` — det er samme kode, ikke en kopi av reglene, så de kan ikke komme i utakt.
+Valideringen kjører når du ber om den, ikke mens du skriver: trykk **Verifiser** når skjemaet er fylt ut. Et tomt skjema bryter naturligvis alle regler, og å møte en førstegangsbruker med fjorten feil før første tastetrykk er støy, ikke veiledning. Etter første verifisering holder statusen seg levende, slik at du ser avvikene forsvinne mens du retter dem.
+
+Avvikene listes under skjemaet med hvilken dimensjon og hvilket felt de gjelder, og sidepanelet viser antall feil, antall advarsler og score. Nedlastingsknappen er sperret til kontrakten er verifisert uten feil, så en fil som kommer ut av appen validerer også i CI. Appen importerer `validate_contract` fra `validate_contracts.py` — det er samme kode, ikke en kopi av reglene, så de kan ikke komme i utakt.
 
 Felter som ikke kreves i utkastfasen ligger bak «Valgfritt»-seksjoner. En førstegangsbruker ser dermed bare de feltene en `draft` faktisk trenger.
 
