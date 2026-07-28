@@ -273,20 +273,6 @@ slaProperties:
 customProperties:
   - property: dataClassification
     value: fortrolig
-  - property: containsPersonalData
-    value: true
-  - property: gdprLegalBasis
-    value: legitimate_interest
-  - property: githubTeam
-    value: "@example-org/example-data-team"
-  - property: breakingChangeNoticeDays
-    value: 90
-  - property: consumers
-    value:
-      - team: "Kredittmodeller"
-        useCase: "Inndata til PD-modeller"
-      - team: "Risikorapportering"
-        useCase: "Månedlig porteføljerapport"
 
 authoritativeDefinitions:
   - type: canonical

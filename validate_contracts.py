@@ -11,12 +11,11 @@ Validerer de fem dimensjonene SB1U krever at en datakontrakt dekker:
                       (personopplysning + personidentifikator), oppbevaringstid
   3. Innhold        — schema/properties, grensesnitt (servers), datakvalitet, stabilitet
   4. Semantikk      — hva dataen betyr, og dataavstamming til kildene
-  5. Versjonering   — semantisk versjon, varslingsfrist, livsløp (GA/EOS/EOL)
+  5. Versjonering   — semantisk versjon, livsløp (GA/EOS/EOL)
 
-ODCS definerer ikke felter for alle SB1U-spesifikke styringskrav (klassifiseringsnivå
-på datasett/kontrakt, kategorisering per kolonne, GDPR-rettsgrunnlag, varslingsfrist).
-Disse ligger i customProperties med faste navn — se SB1U_CUSTOM_PROPS og
-datakontrakt_mal.yml.
+ODCS definerer ikke felter for klassifiseringsnivå på datasett/kontrakt eller for
+kategorisering per kolonne. Disse ligger i customProperties med faste navn — se
+SB1U_CUSTOM_PROPS og datakontrakt_mal.yml.
 """
 
 import re
@@ -190,15 +189,7 @@ SB1U_CUSTOM_PROPS = {
     "classification":   "dataClassification",
     "personal_data":    "personopplysning",
     "identifier":       "personidentifikator",
-    "pii":              "containsPersonalData",
-    "gdpr":             "gdprLegalBasis",
-    "github_team":      "githubTeam",
-    "breaking_notice":  "breakingChangeNoticeDays",
 }
-
-# Minimum varslingsfrist (dager) før en breaking change kan settes i produksjon.
-# Konsumenter må ha reell tid til å tilpasse seg.
-MIN_BREAKING_NOTICE_DAYS = 30
 
 # authoritativeDefinitions.type-verdier som ODCS definerer.
 VALID_AUTH_DEF_TYPES = (
@@ -307,21 +298,6 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
         err("versjonering", "version",
             f"Versjon '{version}' er ikke semantisk (MAJOR.MINOR.PATCH). "
             "Semver er nødvendig for å skille breaking fra bakoverkompatible endringer.")
-
-    notice_key = SB1U_CUSTOM_PROPS["breaking_notice"]
-    notice = custom.get(notice_key)
-    if _todo(notice):
-        # Varslingsfristen betyr først noe når noen faktisk er avhengig av data.
-        gate("versjonering", f"customProperties.{notice_key}",
-             f"Mangler varslingsfrist for breaking changes "
-             f"(customProperty '{notice_key}', minst {MIN_BREAKING_NOTICE_DAYS} dager).")
-    elif not isinstance(notice, int) or isinstance(notice, bool):
-        err("versjonering", f"customProperties.{notice_key}",
-            f"'{notice_key}' må være et heltall (antall dager), ikke '{notice}'.")
-    elif notice < MIN_BREAKING_NOTICE_DAYS:
-        err("versjonering", f"customProperties.{notice_key}",
-            f"Varslingsfrist på {notice} dager er kortere enn minimumskravet på "
-            f"{MIN_BREAKING_NOTICE_DAYS} dager. Konsumenter må ha tid til å tilpasse seg.")
 
     # Livsløp uttrykkes i ODCS som slaProperties: generalAvailability,
     # endOfSupport, endOfLife. En oppføring med uutfylt value teller ikke.
@@ -451,15 +427,10 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
         if not any(str(c.get("tool", "")).lower() == "slack" for c in channels):
             warn("eierskap", "support", "Anbefalt: oppgi en Slack-kanal (tool: slack).")
 
-    if _todo(custom.get(SB1U_CUSTOM_PROPS["github_team"])):
-        warn("eierskap", f"customProperties.{SB1U_CUSTOM_PROPS['github_team']}",
-             f"Anbefalt: legg til GitHub-team som customProperty "
-             f"'{SB1U_CUSTOM_PROPS['github_team']}'.")
-
     # ── 2. KLASSIFISERING ─────────────────────────────────────────────────────
     # ODCS klassifiserer per kolonne (schema[].properties[].classification).
-    # SB1U krever i tillegg et samlet klassifiseringsnivå og personvernstatus på
-    # kontraktsnivå — disse ligger i customProperties.
+    # SB1U krever i tillegg et samlet klassifiseringsnivå på kontraktsnivå —
+    # det ligger i customProperties.
     cls_key = f"customProperties.{SB1U_CUSTOM_PROPS['classification']}"
     contract_cls = custom.get(SB1U_CUSTOM_PROPS["classification"])
     if _todo(contract_cls):
@@ -474,20 +445,6 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
 
     if "classification" in data:
         err("klassifisering", "classification", _classification_hint("kontraktsnivå"))
-
-    pii_key = f"customProperties.{SB1U_CUSTOM_PROPS['pii']}"
-    contains_pii = custom.get(SB1U_CUSTOM_PROPS["pii"])
-    if contains_pii is None:
-        err("klassifisering", pii_key,
-            f"Mangler personvern-flagg (customProperty '{SB1U_CUSTOM_PROPS['pii']}': true/false).")
-    elif not isinstance(contains_pii, bool):
-        err("klassifisering", pii_key,
-            f"'{SB1U_CUSTOM_PROPS['pii']}' må være true eller false, ikke '{contains_pii}'.")
-    elif contains_pii is True:
-        if _todo(custom.get(SB1U_CUSTOM_PROPS["gdpr"])):
-            err("klassifisering", f"customProperties.{SB1U_CUSTOM_PROPS['gdpr']}",
-                f"Persondata krever GDPR-rettsgrunnlag "
-                f"(customProperty '{SB1U_CUSTOM_PROPS['gdpr']}').")
 
     # Oppbevaringstid uttrykkes i ODCS som slaProperties[property=retention].
     retention = slas.get("retention")
@@ -538,8 +495,6 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
     # sjekke at nivået på kontraktsnivå dekker innholdet sitt.
     max_nested_rank: int | None = None
     max_nested_source = ""
-    # Kolonner kategorisert som personopplysninger — mot containsPersonalData.
-    personal_data_cols: list[str] = []
 
     if not isinstance(schema_objects, list) or not schema_objects:
         err("innhold", "schema",
@@ -761,12 +716,6 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
                 if rank is not None and (max_nested_rank is None or rank > max_nested_rank):
                     max_nested_rank, max_nested_source = rank, source
 
-            # Kolonner med personopplysninger — sjekkes mot containsPersonalData.
-            personal_data_cols += [
-                f"{label}.{p.get('name', '?')}" for p in valid_props
-                if str(_custom_props(p).get(pd_key)) in ("alminnelig", "skpo")
-            ]
-
             # Kvalitetsregler kan ligge på datasettet eller på enkeltkolonner.
             # Uten dem er kontrakten en strukturbeskrivelse, ikke en forpliktelse
             # på datakvalitet — så dette er blokkerende.
@@ -847,15 +796,6 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
             f"Kontrakten er klassifisert '{contract_cls}', men {max_nested_source} er "
             f"klassifisert '{_cls_name(max_nested_rank)}'. Kontraktsnivået kan ikke "
             "være mindre strengt enn innholdet sitt.")
-
-    # Kategoriseringen er kilden til om kontrakten inneholder personopplysninger.
-    # Personvern-flagget på kontraktsnivå må stemme med den.
-    if personal_data_cols and contains_pii is False:
-        err("klassifisering", pii_key,
-            f"'{SB1U_CUSTOM_PROPS['pii']}' er false, men følgende kolonner er "
-            f"kategorisert som personopplysninger: "
-            f"{', '.join(personal_data_cols[:5])}"
-            f"{'…' if len(personal_data_cols) > 5 else ''}.")
 
     # ── SLA ───────────────────────────────────────────────────────────────────
     # SLA-tall kan ikke settes seriøst før man vet hvordan leveransen faktisk

@@ -8,7 +8,7 @@
 #                       personvern, oppbevaring (seksjon 4 + 6 + 5)
 #   3. Innhold        — struktur, grensesnitt, kvalitet, stabilitet (seksjon 3–5)
 #   4. Semantikk      — hva dataen betyr og hvor den kommer fra (seksjon 4 + 7)
-#   5. Versjonering   — semver, varslingsfrist, livsløp (seksjon 1 + 5 + 6)
+#   5. Versjonering   — semver, livsløp (seksjon 1 + 5)
 #
 # Skal du bare i gang? Bruk datakontrakt_mal_enkel.yml i stedet — den har bare
 # feltene som kreves for en kontrakt med status `draft`. Denne malen er
@@ -17,10 +17,10 @@
 # Fyll ut alle felter merket med TODO.
 # Felter merket [valgfri] kan utelates, men anbefales.
 #
-# SB1U-profil: ODCS har ingen native felter for alle norske styringskrav
-# (klassifisering på datasett/kontrakt, kategorisering, GDPR-rettsgrunnlag,
-# varslingsfrist). Disse ligger som customProperties med faste navn som
-# validatoren krever — se seksjon 4 (per kolonne) og seksjon 6 (per kontrakt).
+# SB1U-profil: ODCS har ingen native felter for klassifisering på
+# datasett/kontrakt eller for kategorisering per kolonne. Disse ligger som
+# customProperties med faste navn som validatoren krever — se seksjon 4 (per
+# kolonne) og seksjon 6 (per kontrakt).
 
 apiVersion: v3.1.0
 kind: DataContract
@@ -211,29 +211,14 @@ slaProperties:
   - property: endOfLife
     value: TODO
 
-# ── 6. SB1U-SPESIFIKKE STYRINGSKRAV (customProperties) ────────────────────────
-# Disse egenskapsnavnene er påkrevd av SB1U-profilen og valideres av
-# validate_contracts.py. Ikke gi dem andre navn.
+# ── 6. KLASSIFISERING AV LEVERANSEN (customProperties) ────────────────────────
+# Egenskapsnavnet er påkrevd av SB1U-profilen og valideres av
+# validate_contracts.py. Ikke gi det et annet navn.
 customProperties:
   - property: dataClassification      # PÅKREVD — samlet nivå for hele leveransen
     value: TODO                       # aapen | intern | fortrolig | strengt_fortrolig
-
-  - property: containsPersonalData    # PÅKREVD
-    value: false                      # true | false
-
-  - property: gdprLegalBasis          # PÅKREVD hvis containsPersonalData = true
-    value: ""                         # f.eks. "legitimate_interest" | "contract" | "consent"
-
-  - property: breakingChangeNoticeDays  # PÅKREVD — minst 30
-    value: 90                           # Dager konsumenter varsles før en breaking change
-
-  - property: githubTeam              # Anbefalt
-    value: TODO                       # f.eks. "@example-org/example-data-team"
-
-  - property: consumers               # [valgfri] Kjente konsumenter
-    value:
-      - team: TODO
-        useCase: TODO
+                                      # Kan ikke være mindre strengt enn
+                                      # strengeste datasett/kolonne over.
 
 # ── 7. REFERANSER OG SEMANTIKK (authoritativeDefinitions) ─────────────────────
 # `implementation` er PÅKREVD — den utgjør dataavstammingen oppstrøms og viser

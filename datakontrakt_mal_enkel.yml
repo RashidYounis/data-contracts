@@ -73,10 +73,3 @@ schema:
 customProperties:
   - property: dataClassification
     value: TODO          # aapen | intern | fortrolig | strengt_fortrolig
-  - property: containsPersonalData
-    value: false         # true hvis noen kolonne har personopplysning != ingen
-
-  # Påkrevd hvis containsPersonalData er true — hvilket rettsgrunnlag behandles
-  # personopplysningene på? F.eks. contract, legitimate_interest, consent.
-  - property: gdprLegalBasis
-    value: ""

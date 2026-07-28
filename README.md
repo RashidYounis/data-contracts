@@ -47,35 +47,30 @@ Kravene avhenger av `status`. Reglene under er beskrevet slik de gjelder for en 
 | Krav | `draft` | `active` |
 | --- | --- | --- |
 | Eierskap, kolonner med beskrivelse, klassifisering, kategorisering, server | Feil | Feil |
-| 🕓 SLA (`latency`), oppbevaringstid, varslingsfrist | Advarsel | Feil |
+| 🕓 SLA (`latency`), oppbevaringstid (`retention`) | Advarsel | Feil |
 | 🕓 Kvalitetsregler per datasett | Advarsel | Feil |
 | 🕓 Dataavstamming (`transformSourceObjects`), `implementation`-referanse | Advarsel | Feil |
 | 🕓 `businessName` på over 75 % av kolonnene | Advarsel | Feil |
 
 **Eierskap** — `team.name` og minst ett `team.members`-medlem med rollen `Owner` og utfylt `username`. Minst én `support`-kanal med `tool: email`. Data steward og Slack-kanal gir advarsel hvis de mangler.
 
-**Klassifisering** — hver kolonne skal ha et klassifiseringsnivå (`classification`) og full kategorisering (`personopplysning` + `personidentifikator`). `dataClassification` og `containsPersonalData` som `customProperties` på kontraktsnivå, `gdprLegalBasis` hvis kontrakten inneholder persondata, og oppbevaringstid som `slaProperties[property=retention]`. Se [Klassifisering og kategorisering](#klassifisering-og-kategorisering).
+**Klassifisering** — hver kolonne skal ha et klassifiseringsnivå (`classification`) og full kategorisering (`personopplysning` + `personidentifikator`). `dataClassification` som `customProperty` på kontraktsnivå, og oppbevaringstid som `slaProperties[property=retention]`. Se [Klassifisering og kategorisering](#klassifisering-og-kategorisering).
 
 **Innhold** — ODCS-header (`apiVersion` v3.x, `kind: DataContract`), fundamentals, `description.purpose`, en produksjonsserver med komplett konfig, `schema` med beskrevne kolonner, gyldig `logicalType` og primærnøkkel. Minst én kvalitetsregel per datasett, på tabell- eller kolonnenivå — en kontrakt uten kvalitetsregler forplikter bare på struktur. Ferskhet via `slaProperties[latency]` og stabilitet via `slaProperties[availability]`, som er påkrevd for `status: active`.
 
 **Semantikk** — kontrakten skal fortelle hva dataen betyr og hvor den kommer fra, ikke bare hvordan den ser ut. `businessName` per kolonne, `transformSourceObjects` som dataavstamming oppstrøms, og en `authoritativeDefinitions`-oppføring med `type: implementation` som peker på koden som produserer leveransen. `canonical` og `businessDefinition` gir advarsel hvis de mangler.
 
-**Versjonering** — `version` må være semantisk (`MAJOR.MINOR.PATCH`), slik at breaking changes kan skilles maskinelt fra bakoverkompatible endringer. `breakingChangeNoticeDays` må være minst 30. Livsløp via `slaProperties`: `generalAvailability`, `endOfSupport` og `endOfLife` — de to siste er påkrevd når status er `deprecated` eller `retired`, siden de da utgjør avviklingsplanen konsumentene planlegger etter.
+**Versjonering** — `version` må være semantisk (`MAJOR.MINOR.PATCH`), slik at breaking changes kan skilles maskinelt fra bakoverkompatible endringer. Livsløp via `slaProperties`: `generalAvailability`, `endOfSupport` og `endOfLife` — de to siste er påkrevd når status er `deprecated` eller `retired`, siden de da utgjør avviklingsplanen konsumentene planlegger etter.
 
 ## SB1U-profilen
 
-ODCS har ingen native felter for enkelte norske styringskrav. Disse ligger som `customProperties` med faste navn, definert i `SB1U_CUSTOM_PROPS` i `validate_contracts.py`:
+ODCS har ingen native felter for klassifisering på datasett- og kontraktsnivå eller for kategorisering per kolonne. Disse ligger som `customProperties` med faste navn, definert i `SB1U_CUSTOM_PROPS` i `validate_contracts.py`:
 
 | customProperty | Krav | Verdier |
 | --- | --- | --- |
 | `dataClassification` | Påkrevd (kontrakt + datasett) | `aapen`, `intern`, `fortrolig`, `strengt_fortrolig` |
 | `personopplysning` | Påkrevd per kolonne | `ingen`, `alminnelig`, `skpo` |
 | `personidentifikator` | Påkrevd per kolonne | `direkte`, `indirekte`, `ikke_identifiserende` |
-| `containsPersonalData` | Påkrevd | `true` / `false` (ekte boolean) |
-| `gdprLegalBasis` | Påkrevd hvis `containsPersonalData: true` | f.eks. `legitimate_interest`, `contract`, `consent` |
-| `breakingChangeNoticeDays` | Påkrevd, minst `30` | heltall, antall dager |
-| `githubTeam` | Anbefalt | f.eks. `@example-org/example-data-team` |
-| `consumers` | Valgfri | liste av `{team, useCase}` |
 
 Øvrige valg i profilen:
 
@@ -151,7 +146,6 @@ Kategorisering fastsetter **ikke** klassifisering automatisk — den skal inngå
 
 - En kolonne kategorisert `skpo` kan ikke klassifiseres lavere enn `strengt_fortrolig`.
 - En kolonne kategorisert `personopplysning: ingen` kan ikke samtidig være `direkte` eller `indirekte` identifiserende — kan den identifisere en person, inneholder den personopplysninger.
-- `containsPersonalData` på kontraktsnivå kan ikke være `false` når en kolonne er kategorisert `alminnelig` eller `skpo`.
 
 Utover dette er valg av nivå produktteamets vurdering. Produktteamet etablerer og vedlikeholder kategoriseringen som del av metadataforvaltningen, og produktleder er ansvarlig for at den er korrekt og oppdatert. Kategoriseringen skal gjennomgås ved endringer i datastruktur, behandlingsformål eller regulatoriske krav, og ved etablering av nye dataelementer. En kontraktsendring i Git med validatoren som gate i CI er stedet den gjennomgangen blir etterprøvbar.
 

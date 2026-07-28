@@ -420,20 +420,6 @@ customProperties:
   # intern, men datasett 1 er strengt fortrolig, så kontrakten er det også.
   - property: dataClassification
     value: strengt_fortrolig
-  - property: containsPersonalData
-    value: true
-  - property: gdprLegalBasis
-    value: contract
-  - property: githubTeam
-    value: "@example-org/example-payments-team"
-  - property: breakingChangeNoticeDays
-    value: 90
-  - property: consumers
-    value:
-      - team: "Antihvitvask"
-        useCase: "Transaksjonsovervåking på full detaljeringsgrad"
-      - team: "Volumrapportering"
-        useCase: "Månedlig volumrapport — bruker kun aggregatet"
 
 authoritativeDefinitions:
   - type: canonical
