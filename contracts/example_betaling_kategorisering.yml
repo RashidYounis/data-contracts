@@ -1,0 +1,453 @@
+# Eksempelkontrakt — viser klassifiserings- og kategoriseringsmodellen i SB1U.
+#
+# Kontrakten leverer to datasett med ulikt beskyttelsesbehov, og illustrerer:
+#   • alle fire klassifiseringsnivåer (aapen, intern, fortrolig, strengt_fortrolig)
+#   • begge kategoriseringsakser på hver kolonne (påkrevd — ingen unntak)
+#   • alle tre verdier for personidentifikator
+#   • SKPO (GDPR art. 9), som ikke kan ligge under strengt_fortrolig
+#   • hvorfor kontraktsnivået arver det strengeste innholdet under seg
+#
+# Alle navn, adresser og URL-er er nøytrale plassholdere.
+# Følger ODCS v3.1.0: https://bitol-io.github.io/open-data-contract-standard/latest/
+
+apiVersion: v3.1.0
+kind: DataContract
+
+id: "urn:datacontract:dp-example:betaling-serving"
+name: betaling_serving_v1
+version: "2.0.0"
+status: active
+domain: betaling
+tenant: ExampleOrg
+
+description:
+  purpose: >
+    Betalingstransaksjoner for analyse og regulatorisk rapportering. Leveransen
+    består av to datasett: transaksjoner med full detaljeringsgrad (mottaker,
+    melding, formål) og et aggregert månedsbilde per kunde uten
+    personidentifiserbare detaljer.
+  usage: >
+    Detaljdatasettet leses kun av antihvitvask- og compliance-team med tjenstlig
+    behov. Aggregatet er tilgjengelig for alle analyseteam og brukes til
+    volumrapportering.
+  limitations: >
+    Kun gjennomførte transaksjoner. Avviste og reverserte transaksjoner finnes
+    ikke her — bruk BETALING_AVVIK. Aggregatet kan ikke brukes til å utlede
+    enkelttransaksjoner.
+
+tags:
+  - betaling
+  - serving
+  - regulatorisk
+
+team:
+  name: "Example Payments Team"
+  description: Eier og forvalter dataprodukter for betaling.
+  members:
+    - username: "produkteier@example.com"
+      name: "Eksempel Eier"
+      role: Owner
+      dateIn: "2026-01-15"
+    - username: "forvalter@example.com"
+      name: "Eksempel Forvalter"
+      role: Data Steward
+      dateIn: "2026-01-15"
+
+support:
+  - channel: "example-payments@example.com"
+    tool: email
+    url: "mailto:example-payments@example.com"
+    scope: interactive
+  - channel: "#dp-example-betaling"
+    tool: slack
+    scope: issues
+
+servers:
+  - server: production
+    type: snowflake
+    environment: prod
+    account: example-account
+    warehouse: EXAMPLE_WH
+    database: EXAMPLE_DB__PROD__MAIN
+    schema: SERVING
+
+schema:
+  # ── Datasett 1: full detaljeringsgrad ──────────────────────────────────────
+  # Mottaker, melding og formål gjør dette strengt fortrolig. Meldingsfeltet kan
+  # avsløre særlige kategorier personopplysninger (f.eks. betaling til
+  # helsetjeneste eller fagforening), og er kategorisert som SKPO.
+  - name: betaling_transaksjon
+    physicalName: BETALING_TRANSAKSJON
+    physicalType: table
+    businessName: "Betalingstransaksjon – full detalj"
+    description: "En rad per gjennomført betalingstransaksjon, med mottaker og melding."
+    dataGranularityDescription: "Én rad per transaksjon_id."
+
+    properties:
+      - name: transaksjon_id
+        businessName: "Transaksjonsidentifikator"
+        logicalType: string
+        physicalType: VARCHAR(36)
+        description: "Teknisk unik id for transaksjonen."
+        required: true
+        unique: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        classification: fortrolig
+        criticalDataElement: true
+        # Teknisk nøkkel uten personinnhold, men kan kobles til en person via
+        # transaksjonen — derfor indirekte identifiserende.
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: indirekte
+        transformSourceObjects:
+          - core.betaling
+        transformDescription: >
+          Hentes direkte fra betalingsmotoren uten omforming.
+        quality:
+          - metric: nullValues
+            mustBe: 0
+            dimension: completeness
+            severity: error
+            description: "Primærnøkkel skal aldri være null."
+          - metric: duplicateValues
+            mustBe: 0
+            dimension: uniqueness
+            severity: error
+            description: "Primærnøkkel skal være unik."
+
+      - name: avsender_kontonummer
+        businessName: "Avsenders kontonummer"
+        logicalType: string
+        physicalType: VARCHAR(11)
+        description: "Kontonummer transaksjonen er belastet."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: strengt_fortrolig
+        criticalDataElement: true
+        tags: ["pii"]
+        # Et kontonummer kan alene identifisere en fysisk person.
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: direkte
+        transformSourceObjects:
+          - core.konto
+        transformDescription: >
+          Kontonummer på belastet konto, hentet fra kontomasteren.
+
+      - name: mottaker_navn
+        businessName: "Mottakers navn"
+        logicalType: string
+        physicalType: VARCHAR(200)
+        description: "Navn på mottaker slik det er registrert på betalingen."
+        required: false
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: strengt_fortrolig
+        tags: ["pii"]
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: direkte
+        transformSourceObjects:
+          - core.betaling
+        transformDescription: >
+          Mottakernavn som oppgitt av avsender. Ikke validert mot register.
+
+      - name: melding_til_mottaker
+        businessName: "Melding til mottaker"
+        logicalType: string
+        physicalType: VARCHAR(140)
+        description: >
+          Fritekstmelding fra avsender. Kan inneholde opplysninger om helse,
+          fagforeningsmedlemskap eller andre særlige kategorier.
+        required: false
+        primaryKey: false
+        primaryKeyPosition: -1
+        # SKPO kan ikke klassifiseres lavere enn strengt_fortrolig.
+        classification: strengt_fortrolig
+        criticalDataElement: true
+        tags: ["pii"]
+        customProperties:
+          - property: personopplysning
+            value: skpo
+          - property: personidentifikator
+            value: indirekte
+        transformSourceObjects:
+          - core.betaling
+        transformDescription: >
+          Uendret fritekst fra betalingsoppdraget. Ikke maskert, siden feltet
+          brukes til antihvitvaskanalyse.
+
+      - name: beloep
+        businessName: "Transaksjonsbeløp"
+        logicalType: number
+        physicalType: NUMBER(18,2)
+        description: "Beløp i NOK."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: fortrolig
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: indirekte
+        transformSourceObjects:
+          - core.betaling
+        transformDescription: >
+          Beløp konvertert til NOK med kurs på transaksjonsdato.
+
+      - name: valutakode
+        businessName: "Valutakode"
+        logicalType: string
+        physicalType: VARCHAR(3)
+        description: "Opprinnelig valuta, ISO 4217."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        # Ren referansedata — offentlig standard, ingen personinnhold.
+        classification: aapen
+        customProperties:
+          - property: personopplysning
+            value: ingen
+          - property: personidentifikator
+            value: ikke_identifiserende
+        transformSourceObjects:
+          - ref.valuta
+        transformDescription: >
+          Slås opp mot valutaregisteret.
+
+      - name: bokfoert_dato
+        businessName: "Bokføringsdato"
+        logicalType: date
+        physicalType: DATE
+        description: "Dato transaksjonen ble bokført. Målepunkt for ferskhets-SLA."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: intern
+        customProperties:
+          - property: personopplysning
+            value: ingen
+          - property: personidentifikator
+            value: ikke_identifiserende
+        transformSourceObjects:
+          - core.betaling
+        transformDescription: >
+          Bokføringsdato fra betalingsmotoren. Brukes som målepunkt for ferskhet.
+
+    quality:
+      - metric: rowCount
+        mustBeGreaterThan: 0
+        dimension: completeness
+        severity: error
+        description: "Tabellen skal ikke være tom."
+
+    # Datasettet arver det strengeste nivået blant kolonnene sine.
+    customProperties:
+      - property: dataClassification
+        value: strengt_fortrolig
+
+  # ── Datasett 2: aggregert månedsbilde ──────────────────────────────────────
+  # Aggregering uten personidentifiserbare detaljer gir et lavere nivå. Merk at
+  # datasettet er `intern` selv om kontrakten som helhet er strengt fortrolig —
+  # det er nettopp derfor nivå på datasettnivå er nyttig.
+  - name: betaling_maaned_aggregat
+    physicalName: BETALING_MAANED_AGGREGAT
+    physicalType: view
+    businessName: "Betaling – aggregert per måned"
+    description: "Aggregerte betalingsvolumer per måned og kundesegment."
+    dataGranularityDescription: "Én rad per måned per kundesegment."
+
+    properties:
+      - name: maaned
+        businessName: "Måned"
+        logicalType: date
+        physicalType: DATE
+        description: "Første dag i måneden aggregatet gjelder."
+        required: true
+        unique: false
+        primaryKey: true
+        primaryKeyPosition: 1
+        classification: intern
+        customProperties:
+          - property: personopplysning
+            value: ingen
+          - property: personidentifikator
+            value: ikke_identifiserende
+        transformSourceObjects:
+          - serving.betaling_transaksjon
+        transformDescription: >
+          Trunkering av bokfoert_dato til månedsstart.
+        quality:
+          - metric: nullValues
+            mustBe: 0
+            dimension: completeness
+            severity: error
+            description: "Primærnøkkel skal aldri være null."
+          - metric: duplicateValues
+            mustBe: 0
+            dimension: uniqueness
+            severity: error
+            description: "Kombinasjonen måned + segment skal være unik."
+
+      - name: kundesegment
+        businessName: "Kundesegment"
+        logicalType: string
+        physicalType: VARCHAR(20)
+        description: "Segment kunden tilhører, f.eks. PRIVAT eller BEDRIFT."
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 2
+        # Aggregert nivå med minst 100 kunder per gruppe — ingen enkeltperson
+        # kan utledes, derfor ikke identifiserende.
+        classification: intern
+        customProperties:
+          - property: personopplysning
+            value: ingen
+          - property: personidentifikator
+            value: ikke_identifiserende
+        transformSourceObjects:
+          - core.kunde
+        transformDescription: >
+          Segmentkode fra kundemasteren, uendret.
+        quality:
+          - metric: nullValues
+            mustBe: 0
+            dimension: completeness
+            severity: error
+            description: "Segment skal alltid være satt."
+          - metric: duplicateValues
+            mustBe: 0
+            dimension: uniqueness
+            severity: error
+            description: "Kombinasjonen måned + segment skal være unik."
+
+      - name: antall_transaksjoner
+        businessName: "Antall transaksjoner"
+        logicalType: integer
+        physicalType: NUMBER(12,0)
+        description: "Antall gjennomførte transaksjoner i perioden."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: intern
+        customProperties:
+          - property: personopplysning
+            value: ingen
+          - property: personidentifikator
+            value: ikke_identifiserende
+        transformSourceObjects:
+          - serving.betaling_transaksjon
+        transformDescription: >
+          Antall rader per måned og segment. Grupper med under 100 kunder
+          undertrykkes for å hindre reidentifisering.
+
+      - name: sum_beloep
+        businessName: "Sum beløp"
+        logicalType: number
+        physicalType: NUMBER(20,2)
+        description: "Samlet transaksjonsbeløp i NOK for perioden."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: intern
+        customProperties:
+          - property: personopplysning
+            value: ingen
+          - property: personidentifikator
+            value: ikke_identifiserende
+        transformSourceObjects:
+          - serving.betaling_transaksjon
+        transformDescription: >
+          Sum av beloep per måned og segment, i NOK.
+
+    quality:
+      - metric: rowCount
+        mustBeGreaterThan: 0
+        dimension: completeness
+        severity: error
+        description: "Aggregatet skal ikke være tomt."
+
+    customProperties:
+      - property: dataClassification
+        value: intern
+
+slaProperties:
+  # Ferskhet og frekvens
+  - property: latency
+    value: 4
+    unit: h
+    element: betaling_transaksjon.bokfoert_dato
+    driver: regulatory
+  - property: frequency
+    value: 1
+    unit: d
+    element: betaling_transaksjon.bokfoert_dato
+    scheduler: cron
+    schedule: "0 5 * * *"
+
+  # Stabilitet
+  - property: availability
+    value: 99.9
+    unit: percent
+  - property: timeToNotify
+    value: 2
+    unit: h
+    driver: operational
+
+  # Oppbevaring — regulatorisk krav for betalingsdata
+  - property: retention
+    value: 5
+    unit: y
+    element: betaling_transaksjon.bokfoert_dato
+    driver: regulatory
+
+  # Livsløp
+  - property: generalAvailability
+    value: "2026-02-01T00:00:00+01:00"
+  - property: endOfSupport
+    value: "2029-02-01T00:00:00+01:00"
+  - property: endOfLife
+    value: "2030-02-01T00:00:00+01:00"
+
+customProperties:
+  # Kontraktsnivået kan ikke være mindre strengt enn innholdet: datasett 2 er
+  # intern, men datasett 1 er strengt fortrolig, så kontrakten er det også.
+  - property: dataClassification
+    value: strengt_fortrolig
+  - property: containsPersonalData
+    value: true
+  - property: gdprLegalBasis
+    value: contract
+  - property: githubTeam
+    value: "@example-org/example-payments-team"
+  - property: breakingChangeNoticeDays
+    value: 90
+  - property: consumers
+    value:
+      - team: "Antihvitvask"
+        useCase: "Transaksjonsovervåking på full detaljeringsgrad"
+      - team: "Volumrapportering"
+        useCase: "Månedlig volumrapport — bruker kun aggregatet"
+
+authoritativeDefinitions:
+  - type: canonical
+    url: "https://github.com/example-org/dp-example/blob/main/contracts/betaling_serving.yml"
+    description: Kanonisk versjon av denne kontrakten.
+  - type: implementation
+    url: "https://github.com/example-org/dp-example/blob/main/dbt/models/serving/betaling.yml"
+    description: dbt-modell som produserer datasettene — oppstrøms dataavstamming.
+  - type: businessDefinition
+    url: "https://example.com/begrepskatalog/betaling"
+    description: Begrepsapparat for betaling — hva feltene betyr.
+  - type: privacy-statement
+    url: "https://example.com/personvern/betalingsdata"
+    description: Personvernerklæring for behandling av betalingsdata.

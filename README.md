@@ -10,6 +10,8 @@ En datakontrakt definerer en forpliktelse fra en dataleverandør mot sine konsum
 | --- | --- |
 | `datakontrakt_mal.yml` | Mal for nye datakontrakter. Kopiér denne og fyll ut alle `TODO`-felter. |
 | `contracts/` | Datakontrakter, én YAML-fil per dataprodukt. |
+| `contracts/example_betaling_kategorisering.yml` | Eksempel som viser hele klassifiserings- og kategoriseringsmodellen: to datasett med ulikt beskyttelsesbehov, alle fire nivåer, alle kategoriverdier og SKPO. |
+| `contracts/example_kredittkunde_serving.yml` | Enklere eksempel med ett datasett. |
 | `validate_contracts.py` | Validerer alle kontrakter i `contracts/` og skriver en HTML-statusrapport. |
 
 ## Bruk
