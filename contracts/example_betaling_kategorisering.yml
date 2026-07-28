@@ -102,8 +102,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: indirekte
-        transformSourceObjects:
-          - core.betaling
         transformDescription: >
           Hentes direkte fra betalingsmotoren uten omforming.
         quality:
@@ -134,8 +132,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: direkte
-        transformSourceObjects:
-          - core.konto
         transformDescription: >
           Kontonummer på belastet konto, hentet fra kontomasteren.
 
@@ -153,8 +149,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: direkte
-        transformSourceObjects:
-          - core.betaling
         transformDescription: >
           Mottakernavn som oppgitt av avsender. Ikke validert mot register.
 
@@ -176,8 +170,6 @@ schema:
             value: skpo
           - property: personidentifikator
             value: indirekte
-        transformSourceObjects:
-          - core.betaling
         transformDescription: >
           Uendret fritekst fra betalingsoppdraget. Ikke maskert, siden feltet
           brukes til antihvitvaskanalyse.
@@ -196,8 +188,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: indirekte
-        transformSourceObjects:
-          - core.betaling
         transformDescription: >
           Beløp konvertert til NOK med kurs på transaksjonsdato.
 
@@ -216,8 +206,6 @@ schema:
             value: ingen
           - property: personidentifikator
             value: ikke_identifiserende
-        transformSourceObjects:
-          - ref.valuta
         transformDescription: >
           Slås opp mot valutaregisteret.
 
@@ -235,8 +223,6 @@ schema:
             value: ingen
           - property: personidentifikator
             value: ikke_identifiserende
-        transformSourceObjects:
-          - core.betaling
         transformDescription: >
           Bokføringsdato fra betalingsmotoren. Brukes som målepunkt for ferskhet.
 
@@ -279,8 +265,6 @@ schema:
             value: ingen
           - property: personidentifikator
             value: ikke_identifiserende
-        transformSourceObjects:
-          - serving.betaling_transaksjon
         transformDescription: >
           Trunkering av bokfoert_dato til månedsstart.
         quality:
@@ -311,8 +295,6 @@ schema:
             value: ingen
           - property: personidentifikator
             value: ikke_identifiserende
-        transformSourceObjects:
-          - core.kunde
         transformDescription: >
           Segmentkode fra kundemasteren, uendret.
         quality:
@@ -341,8 +323,6 @@ schema:
             value: ingen
           - property: personidentifikator
             value: ikke_identifiserende
-        transformSourceObjects:
-          - serving.betaling_transaksjon
         transformDescription: >
           Antall rader per måned og segment. Grupper med under 100 kunder
           undertrykkes for å hindre reidentifisering.
@@ -361,8 +341,6 @@ schema:
             value: ingen
           - property: personidentifikator
             value: ikke_identifiserende
-        transformSourceObjects:
-          - serving.betaling_transaksjon
         transformDescription: >
           Sum av beloep per måned og segment, i NOK.
 
@@ -427,7 +405,7 @@ authoritativeDefinitions:
     description: Kanonisk versjon av denne kontrakten.
   - type: implementation
     url: "https://github.com/example-org/dp-example/blob/main/dbt/models/serving/betaling.yml"
-    description: dbt-modell som produserer datasettene — oppstrøms dataavstamming.
+    description: dbt-modell som produserer datasettene.
   - type: businessDefinition
     url: "https://example.com/begrepskatalog/betaling"
     description: Begrepsapparat for betaling — hva feltene betyr.

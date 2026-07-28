@@ -10,7 +10,7 @@ Validerer de fem dimensjonene SB1U krever at en datakontrakt dekker:
   2. Klassifisering — 4 klassifiseringsnivåer, kategorisering per kolonne
                       (personopplysning + personidentifikator), oppbevaringstid
   3. Innhold        — schema/properties, grensesnitt (servers), datakvalitet, stabilitet
-  4. Semantikk      — hva dataen betyr, og dataavstamming til kildene
+  4. Semantikk      — hva dataen betyr, og hvilken kode som produserer den
   5. Versjonering   — semantisk versjon, livsløp (GA/EOS/EOL)
 
 ODCS definerer ikke felter for klassifiseringsnivå på datasett/kontrakt eller for
@@ -362,7 +362,7 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
     if "implementation" not in auth_types:
         # Koden som produserer dataen finnes ikke nødvendigvis ennå i utkastfasen.
         gate("semantikk", "authoritativeDefinitions",
-             "Mangler dataavstamming oppstrøms: legg til en authoritativeDefinition "
+             "Mangler referanse til implementasjonen: legg til en authoritativeDefinition "
              "med type 'implementation' som peker på koden/modellen som produserer dataen.")
     if "canonical" not in auth_types:
         warn("semantikk", "authoritativeDefinitions",
@@ -752,22 +752,11 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
                        f"{', '.join(no_business_name[:5])}"
                        f"{'…' if len(no_business_name) > 5 else ''}.")
 
-            # Dataavstamming per kolonne: ODCS uttrykker dette med
-            # transformSourceObjects (hvilke kilder kolonnen er utledet fra).
-            with_lineage = [p for p in valid_props if p.get("transformSourceObjects")]
-            if not with_lineage:
-                gate("semantikk", f"{prefix}.properties",
-                     f"Datasett '{label}' har ingen dataavstamming — ingen kolonne oppgir "
-                     "transformSourceObjects. Konsumenter må kunne se hvor dataen kommer fra.")
-            elif len(with_lineage) < len(valid_props):
-                missing_lineage = [
-                    str(p.get("name", "?")) for p in valid_props
-                    if not p.get("transformSourceObjects")
-                ]
-                warn("semantikk", f"{prefix}.properties",
-                     f"{len(missing_lineage)}/{len(valid_props)} kolonner mangler "
-                     f"transformSourceObjects: {', '.join(missing_lineage[:5])}"
-                     f"{'…' if len(missing_lineage) > 5 else ''}.")
+            # Dataavstamming per kolonne håndheves ikke. Å utlede kildekolonner
+            # for hver enkelt kolonne er kostbart å etablere og vedlikeholde
+            # manuelt, og dataavstamming hentes bedre maskinelt fra dbt.
+            # Kontrakten peker på implementasjonen i stedet — se
+            # authoritativeDefinitions[type=implementation].
 
             # Utledede kolonner bør forklares i forretningstermer, ikke bare SQL.
             undocumented_transforms = [
@@ -1066,8 +1055,8 @@ def build_report_html(results: list[ContractResult]) -> str:
   <span><b>Score</b>: 100 − 15×feil − advarsler (maks 30), min 0</span>
   <span><b>Dimensjoner</b>: {' · '.join(DIM_LABELS.values())}</span>
   <span><b>proposed/draft</b>: krav som forutsetter en ferdig leveranse (SLA,
-    livsløp, kvalitetsregler, dataavstamming) er advarsler. De blir blokkerende
-    når status settes til <b>active</b>.</span>
+    livsløp, kvalitetsregler, referanse til implementasjonen) er advarsler.
+    De blir blokkerende når status settes til <b>active</b>.</span>
 </div>
 
 <div class="toolbar">

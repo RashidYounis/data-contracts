@@ -21,7 +21,7 @@ Den første kontrakten din trenger bare dette:
 - **Kategorisering** — `personopplysning` og `personidentifikator` per kolonne
 - **Hvor den ligger** — Snowflake-server
 
-Behold `status: draft` til leveransen faktisk er i produksjon. Da er SLA, livsløpsdatoer, kvalitetsregler, dataavstamming og referanselenker **advarsler** — nyttige å fylle ut, men de stopper deg ikke. Det gjør det mulig å opprette kontrakten allerede når du har en hypotese om en ny leveranse, uten å gjette på tall du ikke kan vite ennå.
+Behold `status: draft` til leveransen faktisk er i produksjon. Da er SLA, livsløpsdatoer, kvalitetsregler og referanselenker **advarsler** — nyttige å fylle ut, men de stopper deg ikke. Det gjør det mulig å opprette kontrakten allerede når du har en hypotese om en ny leveranse, uten å gjette på tall du ikke kan vite ennå.
 
 Når du setter `status: active`, blir de samme kravene blokkerende. Det er den kontrollerte overgangen: kontrakten må være komplett før noen kan ta avhengigheter på leveransen i produksjon.
 
@@ -49,7 +49,7 @@ Kravene avhenger av `status`. Reglene under er beskrevet slik de gjelder for en 
 | Eierskap, kolonner med beskrivelse, klassifisering, kategorisering, server | Feil | Feil |
 | 🕓 SLA (`latency`), oppbevaringstid (`retention`) | Advarsel | Feil |
 | 🕓 Kvalitetsregler per datasett | Advarsel | Feil |
-| 🕓 Dataavstamming (`transformSourceObjects`), `implementation`-referanse | Advarsel | Feil |
+| 🕓 `implementation`-referanse til koden som produserer dataen | Advarsel | Feil |
 | 🕓 `businessName` på over 75 % av kolonnene | Advarsel | Feil |
 
 **Eierskap** — `team.name` og minst ett `team.members`-medlem med rollen `Owner` og utfylt `username`. Minst én `support`-kanal med `tool: email`. Data steward og Slack-kanal gir advarsel hvis de mangler.
@@ -58,7 +58,7 @@ Kravene avhenger av `status`. Reglene under er beskrevet slik de gjelder for en 
 
 **Innhold** — ODCS-header (`apiVersion` v3.x, `kind: DataContract`), fundamentals, `description.purpose`, en produksjonsserver med komplett konfig, `schema` med beskrevne kolonner, gyldig `logicalType` og primærnøkkel. Minst én kvalitetsregel per datasett, på tabell- eller kolonnenivå — en kontrakt uten kvalitetsregler forplikter bare på struktur. Ferskhet via `slaProperties[latency]` og stabilitet via `slaProperties[availability]`, som er påkrevd for `status: active`.
 
-**Semantikk** — kontrakten skal fortelle hva dataen betyr og hvor den kommer fra, ikke bare hvordan den ser ut. `businessName` per kolonne, `transformSourceObjects` som dataavstamming oppstrøms, og en `authoritativeDefinitions`-oppføring med `type: implementation` som peker på koden som produserer leveransen. `canonical` og `businessDefinition` gir advarsel hvis de mangler.
+**Semantikk** — kontrakten skal fortelle hva dataen betyr, ikke bare hvordan den ser ut. `businessName` per kolonne, og en `authoritativeDefinitions`-oppføring med `type: implementation` som peker på koden som produserer leveransen. `canonical` og `businessDefinition` gir advarsel hvis de mangler.
 
 **Versjonering** — `version` må være semantisk (`MAJOR.MINOR.PATCH`), slik at breaking changes kan skilles maskinelt fra bakoverkompatible endringer. Livsløp via `slaProperties`: `generalAvailability`, `endOfSupport` og `endOfLife` — de to siste er påkrevd når status er `deprecated` eller `retired`, siden de da utgjør avviklingsplanen konsumentene planlegger etter.
 
@@ -76,7 +76,7 @@ ODCS har ingen native felter for klassifisering på datasett- og kontraktsnivå 
 
 - Oppbevaringstid uttrykkes som `slaProperties[property=retention]` med `value` og `unit` (`d` eller `y`), siden ODCS har et definert felt for dette.
 - Livsløp og stabilitet uttrykkes også som `slaProperties` (`generalAvailability`, `endOfSupport`, `endOfLife`, `availability`, `timeToNotify`) i stedet for egne felter.
-- Dataavstamming ligger per kolonne i `transformSourceObjects`, med `transformDescription` som forklaring i forretningstermer.
+- Dataavstamming per kolonne kreves ikke. Å vedlikeholde kildekolonner manuelt for hver kolonne er kostbart, og avstammingen hentes bedre maskinelt fra dbt. Kontrakten peker på implementasjonen via `authoritativeDefinitions[type=implementation]` i stedet. `transformDescription` per kolonne er valgfri, for tilfeller der en utledning trenger en forklaring i forretningstermer.
 - Persondata markeres per kolonne gjennom kategoriseringen (`personopplysning` + `personidentifikator`), ikke som en sentral liste og ikke som tags. En `pii`-tag ville duplisert kategoriseringen med mindre presisjon, og to kilder til samme faktum kommer før eller senere i utakt.
 - Produksjonsserveren identifiseres ved `environment: prod` (eller `server: production`).
 

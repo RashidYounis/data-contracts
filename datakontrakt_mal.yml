@@ -7,7 +7,7 @@
 #   2. Klassifisering — klassifiseringsnivå + kategorisering per kolonne,
 #                       personvern, oppbevaring (seksjon 4 + 6 + 5)
 #   3. Innhold        — struktur, grensesnitt, kvalitet, stabilitet (seksjon 3–5)
-#   4. Semantikk      — hva dataen betyr og hvor den kommer fra (seksjon 4 + 7)
+#   4. Semantikk      — hva dataen betyr, og koden som produserer den (seksjon 4 + 7)
 #   5. Versjonering   — semver, livsløp (seksjon 1 + 5)
 #
 # Skal du bare i gang? Bruk datakontrakt_mal_enkel.yml i stedet — den har bare
@@ -128,11 +128,11 @@ schema:
             # ikke_identifiserende — kan ikke identifisere en person
             value: TODO
 
-        # Dataavstamming: hvilke kilder kolonnen er utledet fra. Uten dette kan
-        # ikke konsumenter se hvor dataen kommer fra.
-        transformSourceObjects:
-          - TODO               # f.eks. "core.kunde"
-        transformDescription: TODO   # Hva som skjer med dataen, i forretningstermer
+        # [valgfri] Hva som skjer med dataen på vei til denne kolonnen, i
+        # forretningstermer. Dataavstamming per kolonne kreves ikke — den
+        # hentes maskinelt fra dbt. Kontrakten peker på implementasjonen i
+        # seksjon 7 i stedet.
+        transformDescription: ""
         transformLogic: ""     # [valgfri] SQL-uttrykket, hvis nyttig
 
         # Datakvalitet per kolonne. Primærnøkkel skal ha både null- og duplikatsjekk.
@@ -221,12 +221,12 @@ customProperties:
                                       # strengeste datasett/kolonne over.
 
 # ── 7. REFERANSER OG SEMANTIKK (authoritativeDefinitions) ─────────────────────
-# `implementation` er PÅKREVD — den utgjør dataavstammingen oppstrøms og viser
-# hvilken kode som produserer leveransen.
+# `implementation` er PÅKREVD — den viser hvilken kode som produserer
+# leveransen, og er der dataavstamming hentes maskinelt fra.
 authoritativeDefinitions:
   - type: implementation
     url: TODO                          # dbt-modellen som implementerer kontrakten
-    description: dbt-modell som produserer datasettet — oppstrøms dataavstamming.
+    description: dbt-modell som produserer datasettet.
 
   - type: canonical                    # Anbefalt
     url: TODO                          # Kontraktens plassering i Git

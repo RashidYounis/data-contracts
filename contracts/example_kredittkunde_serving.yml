@@ -87,8 +87,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: indirekte
-        transformSourceObjects:
-          - core.kunde
         transformDescription: >
           Hentes direkte fra kundemasteren uten omforming.
         quality:
@@ -117,8 +115,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: indirekte
-        transformSourceObjects:
-          - core.person
         transformDescription: >
           Hentes fra personregisteret, koblet på kundeidentifikator.
 
@@ -137,9 +133,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: indirekte
-        transformSourceObjects:
-          - core.laan
-          - core.kredittramme
         transformDescription: >
           Summen av utestående saldo på alle aktive lån og trukket beløp på
           kredittrammer, per kunde.
@@ -159,8 +152,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: indirekte
-        transformSourceObjects:
-          - modell.pd_scoring
         transformDescription: >
           Siste gyldige score fra PD-modellen. Null hvis kunden ikke er scoret,
           f.eks. ved for kort historikk.
@@ -179,8 +170,6 @@ schema:
             value: alminnelig
           - property: personidentifikator
             value: indirekte
-        transformSourceObjects:
-          - modell.pd_scoring
         transformDescription: >
           Diskretisering av PD-score til fem klasser etter intern
           risikoklassifiseringsmodell. A er lavest risiko.
@@ -213,8 +202,6 @@ schema:
             value: ingen
           - property: personidentifikator
             value: ikke_identifiserende
-        transformSourceObjects:
-          - modell.pd_scoring
         transformDescription: >
           Settes til kjøredato for batchen som produserte raden. Brukes som
           målepunkt for ferskhets-SLA.
@@ -280,7 +267,7 @@ authoritativeDefinitions:
     description: Kanonisk versjon av denne kontrakten.
   - type: implementation
     url: "https://github.com/example-org/dp-example/blob/main/dbt/models/serving/kredittkunde.yml"
-    description: dbt-modell som produserer datasettet — oppstrøms dataavstamming.
+    description: dbt-modell som produserer datasettet.
   - type: businessDefinition
     url: "https://example.com/begrepskatalog/kredittrisiko"
     description: Begrepsapparat for kredittrisiko — hva scoringer og klasser betyr.
