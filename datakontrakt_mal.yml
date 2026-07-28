@@ -13,7 +13,7 @@ apiVersion: v3.1.0
 kind: DataContract
 
 # ── 1. FUNDAMENTALS ───────────────────────────────────────────────────────────
-id: TODO               # Unik ID — UUID eller URN, f.eks. "urn:datacontract:dp-risk-data:kredittkunde-core"
+id: TODO               # Unik ID — UUID eller URN, f.eks. "urn:datacontract:dp-example:kredittkunde-core"
 name: TODO             # Teknisk navn, f.eks. "kredittkunde_core_v1"
 version: "1.0.0"       # Semantisk versjon av kontrakten
 status: draft          # proposed | draft | active | deprecated | retired
@@ -32,7 +32,7 @@ tags:                  # [valgfri] Frie nøkkelord for søk i katalogen
 # ODCS uttrykker eierskap via team.members med roller, og kontaktpunkter via
 # support. SB1U-profilen krever minst én member med role "Owner".
 team:
-  name: TODO           # Teamnavn, f.eks. "Risk Data"
+  name: TODO           # Teamnavn, f.eks. "Example Data Team"
   description: TODO    # [valgfri] Kort om teamets ansvar
   members:
     - username: TODO   # E-post eller brukernavn til produkteier
@@ -47,11 +47,11 @@ team:
 
 # Kontaktkanaler. SB1U-profilen krever minst én kanal med tool: email.
 support:
-  - channel: TODO      # Team-e-post, f.eks. "risk-data@sparebank1.no"
+  - channel: TODO      # Team-e-post, f.eks. "example-data-team@example.com"
     tool: email
     url: TODO          # mailto:-URL til samme adresse
     scope: interactive
-  - channel: TODO      # [valgfri] Slack-kanal, f.eks. "#dp-risk-data"
+  - channel: TODO      # [valgfri] Slack-kanal, f.eks. "#dp-example-data"
     tool: slack
     scope: issues
 
@@ -62,7 +62,7 @@ servers:
     environment: prod
     account: TODO      # Snowflake-konto
     warehouse: TODO    # Warehouse som brukes for lesing
-    database: TODO     # f.eks. RISK_DATA__PROD__MAIN
+    database: TODO     # f.eks. EXAMPLE_DB__PROD__MAIN
     schema: TODO       # f.eks. SERVING
 
 # ── 4. INNHOLD (schema) ───────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ customProperties:
     value: ""                         # f.eks. "legitimate_interest" | "contract" | "consent"
 
   - property: githubTeam              # Anbefalt
-    value: TODO                       # f.eks. "@sparebank1utvikling/risk-data"
+    value: TODO                       # f.eks. "@example-org/example-data-team"
 
   - property: consumers               # [valgfri] Kjente konsumenter
     value:

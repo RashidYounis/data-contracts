@@ -1,16 +1,17 @@
 # Eksempelkontrakt — kun for å illustrere kontraktsformatet.
 # Basert på et tenkt "kredittkunde"-dataprodukt i serving-laget.
+# Alle navn, adresser og URL-er er nøytrale plassholdere.
 # Følger ODCS v3.1.0: https://bitol-io.github.io/open-data-contract-standard/latest/
 
 apiVersion: v3.1.0
 kind: DataContract
 
-id: "urn:datacontract:dp-risk-data:kredittkunde-serving"
+id: "urn:datacontract:dp-example:kredittkunde-serving"
 name: kredittkunde_serving_v1
 version: "1.2.0"
 status: active
 domain: risiko
-tenant: SB1U
+tenant: ExampleOrg
 
 description:
   purpose: >
@@ -29,24 +30,24 @@ tags:
   - serving
 
 team:
-  name: "Risk Data"
+  name: "Example Data Team"
   description: Eier og forvalter dataprodukter for kredittrisiko.
   members:
-    - username: "ola.nordmann@sparebank1.no"
-      name: "Ola Nordmann"
+    - username: "produkteier@example.com"
+      name: "Eksempel Eier"
       role: Owner
       dateIn: "2025-09-01"
-    - username: "kari.hansen@sparebank1.no"
-      name: "Kari Hansen"
+    - username: "forvalter@example.com"
+      name: "Eksempel Forvalter"
       role: Data Steward
       dateIn: "2025-09-01"
 
 support:
-  - channel: "risk-data@sparebank1.no"
+  - channel: "example-data-team@example.com"
     tool: email
-    url: "mailto:risk-data@sparebank1.no"
+    url: "mailto:example-data-team@example.com"
     scope: interactive
-  - channel: "#dp-risk-data"
+  - channel: "#dp-example-data"
     tool: slack
     scope: issues
 
@@ -54,9 +55,9 @@ servers:
   - server: production
     type: snowflake
     environment: prod
-    account: sb1u
-    warehouse: RISK_DATA_WH
-    database: RISK_DATA__PROD__MAIN
+    account: example-account
+    warehouse: EXAMPLE_WH
+    database: EXAMPLE_DB__PROD__MAIN
     schema: SERVING
 
 schema:
@@ -188,7 +189,7 @@ customProperties:
   - property: gdprLegalBasis
     value: legitimate_interest
   - property: githubTeam
-    value: "@sparebank1utvikling/risk-data"
+    value: "@example-org/example-data-team"
   - property: consumers
     value:
       - team: "Kredittmodeller"
@@ -198,8 +199,8 @@ customProperties:
 
 authoritativeDefinitions:
   - type: canonical
-    url: "https://github.com/sparebank1utvikling/dp-risk-data/blob/main/contracts/kredittkunde_serving.yml"
+    url: "https://github.com/example-org/dp-example/blob/main/contracts/kredittkunde_serving.yml"
     description: Kanonisk versjon av denne kontrakten.
   - type: implementation
-    url: "https://github.com/sparebank1utvikling/dp-risk-data/blob/main/dbt/models/serving/kredittkunde.yml"
+    url: "https://github.com/example-org/dp-example/blob/main/dbt/models/serving/kredittkunde.yml"
     description: dbt-modell som produserer datasettet.

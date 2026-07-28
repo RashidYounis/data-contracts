@@ -50,7 +50,7 @@ ODCS har ingen native felter for enkelte norske styringskrav. Disse ligger som `
 | `dataCategory` | Påkrevd | `public`, `internal`, `confidential`, `sensitive`, `personal_data` |
 | `containsPersonalData` | Påkrevd | `true` / `false` (ekte boolean) |
 | `gdprLegalBasis` | Påkrevd hvis `containsPersonalData: true` | f.eks. `legitimate_interest`, `contract`, `consent` |
-| `githubTeam` | Anbefalt | f.eks. `@sparebank1utvikling/risk-data` |
+| `githubTeam` | Anbefalt | f.eks. `@example-org/example-data-team` |
 | `consumers` | Valgfri | liste av `{team, useCase}` |
 
 Øvrige valg i profilen:
