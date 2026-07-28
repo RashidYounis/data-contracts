@@ -1,0 +1,205 @@
+# Eksempelkontrakt — kun for å illustrere kontraktsformatet.
+# Basert på et tenkt "kredittkunde"-dataprodukt i serving-laget.
+# Følger ODCS v3.1.0: https://bitol-io.github.io/open-data-contract-standard/latest/
+
+apiVersion: v3.1.0
+kind: DataContract
+
+id: "urn:datacontract:dp-risk-data:kredittkunde-serving"
+name: kredittkunde_serving_v1
+version: "1.2.0"
+status: active
+domain: risiko
+tenant: SB1U
+
+description:
+  purpose: >
+    Aggregert kundebilde for kredittrisiko-analyser. Inneholder scoringer,
+    engasjementsdata og klassifisering per kunde. Primær kilde for
+    risikorapportering og modellutvikling.
+  usage: >
+    Leses direkte fra Snowflake av modellutviklings- og rapporteringsteam.
+    Én rad per kunde med siste gyldige risikoscore.
+  limitations: >
+    Kun kunder med aktivt kredittengasjement. Historikk finnes ikke i denne
+    tabellen — bruk KREDITTKUNDE_HISTORIKK for tidsserier.
+
+tags:
+  - kredittrisiko
+  - serving
+
+team:
+  name: "Risk Data"
+  description: Eier og forvalter dataprodukter for kredittrisiko.
+  members:
+    - username: "ola.nordmann@sparebank1.no"
+      name: "Ola Nordmann"
+      role: Owner
+      dateIn: "2025-09-01"
+    - username: "kari.hansen@sparebank1.no"
+      name: "Kari Hansen"
+      role: Data Steward
+      dateIn: "2025-09-01"
+
+support:
+  - channel: "risk-data@sparebank1.no"
+    tool: email
+    url: "mailto:risk-data@sparebank1.no"
+    scope: interactive
+  - channel: "#dp-risk-data"
+    tool: slack
+    scope: issues
+
+servers:
+  - server: production
+    type: snowflake
+    environment: prod
+    account: sb1u
+    warehouse: RISK_DATA_WH
+    database: RISK_DATA__PROD__MAIN
+    schema: SERVING
+
+schema:
+  - name: kredittkunde
+    physicalName: KREDITTKUNDE
+    physicalType: table
+    businessName: "Kredittkunde – Serving"
+    description: "En rad per unikt kundeengasjement med siste gyldige risikoscore."
+    dataGranularityDescription: "Én rad per kunde_id."
+
+    properties:
+      - name: kunde_id
+        logicalType: string
+        physicalType: VARCHAR(20)
+        description: "Intern kundeid – pseudonymisert."
+        required: true
+        unique: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        classification: confidential
+        criticalDataElement: true
+        tags: ["pii"]
+        quality:
+          - metric: nullValues
+            mustBe: 0
+            dimension: completeness
+            severity: error
+            description: "Primærnøkkel skal aldri være null."
+          - metric: duplicateValues
+            mustBe: 0
+            dimension: uniqueness
+            severity: error
+            description: "Primærnøkkel skal være unik."
+
+      - name: foedselsdato
+        logicalType: date
+        physicalType: DATE
+        description: "Kundens fødselsdato."
+        required: false
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: personal_data
+        tags: ["pii"]
+
+      - name: engasjement_beloep
+        logicalType: number
+        physicalType: NUMBER(18,2)
+        description: "Totalt utestående engasjementsbeløp i NOK."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: confidential
+        criticalDataElement: true
+
+      - name: pd_score
+        logicalType: number
+        physicalType: NUMBER(6,4)
+        description: "Probability of Default, tall mellom 0 og 1."
+        required: false
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: confidential
+        criticalDataElement: true
+
+      - name: risiko_klasse
+        logicalType: string
+        physicalType: VARCHAR(5)
+        description: "Risikoklasse A–E basert på PD-score."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: confidential
+        quality:
+          - metric: nullValues
+            mustBe: 0
+            dimension: completeness
+            severity: error
+            description: "Risikoklasse skal alltid være satt."
+          - metric: invalidValues
+            mustBe: 0
+            arguments:
+              validValues: ["A", "B", "C", "D", "E"]
+            dimension: conformity
+            severity: error
+            description: "Risikoklasse skal være én av A–E."
+
+      - name: oppdatert_dato
+        logicalType: date
+        physicalType: DATE
+        description: "Dato for siste oppdatering av raden."
+        required: true
+        primaryKey: false
+        primaryKeyPosition: -1
+        classification: internal
+
+    quality:
+      - metric: rowCount
+        mustBeGreaterThan: 0
+        dimension: completeness
+        severity: error
+        description: "Tabellen skal ikke være tom."
+
+slaProperties:
+  - property: latency
+    value: 24
+    unit: h
+    element: kredittkunde.oppdatert_dato
+    driver: analytics
+  - property: frequency
+    value: 1
+    unit: d
+    element: kredittkunde.oppdatert_dato
+    scheduler: cron
+    schedule: "0 6 * * *"
+  - property: retention
+    value: 7
+    unit: y
+    element: kredittkunde.oppdatert_dato
+    driver: regulatory
+  - property: availability
+    value: 99.5
+    unit: percent
+
+customProperties:
+  - property: dataCategory
+    value: confidential
+  - property: containsPersonalData
+    value: true
+  - property: gdprLegalBasis
+    value: legitimate_interest
+  - property: githubTeam
+    value: "@sparebank1utvikling/risk-data"
+  - property: consumers
+    value:
+      - team: "Kredittmodeller"
+        useCase: "Inndata til PD-modeller"
+      - team: "Risikorapportering"
+        useCase: "Månedlig porteføljerapport"
+
+authoritativeDefinitions:
+  - type: canonical
+    url: "https://github.com/sparebank1utvikling/dp-risk-data/blob/main/contracts/kredittkunde_serving.yml"
+    description: Kanonisk versjon av denne kontrakten.
+  - type: implementation
+    url: "https://github.com/sparebank1utvikling/dp-risk-data/blob/main/dbt/models/serving/kredittkunde.yml"
+    description: dbt-modell som produserer datasettet.

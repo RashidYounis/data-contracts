@@ -1,0 +1,170 @@
+# Datakontraktsmal — ODCS v3.1.0 (Open Data Contract Standard, Bitol/LF AI & Data)
+# Spesifikasjon: https://bitol-io.github.io/open-data-contract-standard/latest/
+#
+# Fokus: eierskap, klassifisering og nødvendig innhold for dataprodukter.
+# Fyll ut alle felter merket med TODO.
+# Felter merket [valgfri] kan utelates, men anbefales.
+#
+# SB1U-profil: ODCS har ingen native felter for norske styringskrav
+# (datakategori, GDPR-rettsgrunnlag). Disse ligger som customProperties med
+# faste navn som validate_contracts.py krever — se seksjon 6.
+
+apiVersion: v3.1.0
+kind: DataContract
+
+# ── 1. FUNDAMENTALS ───────────────────────────────────────────────────────────
+id: TODO               # Unik ID — UUID eller URN, f.eks. "urn:datacontract:dp-risk-data:kredittkunde-core"
+name: TODO             # Teknisk navn, f.eks. "kredittkunde_core_v1"
+version: "1.0.0"       # Semantisk versjon av kontrakten
+status: draft          # proposed | draft | active | deprecated | retired
+domain: TODO           # Forretningsdomene, f.eks. "risiko"
+tenant: SB1U           # Organisasjon som eier dataen
+
+description:
+  purpose: TODO        # Hva inneholder dette dataproduktet, og hva er det laget for?
+  usage: TODO          # Hvordan er det tenkt brukt? Typiske bruksmønstre.
+  limitations: TODO    # Kjente begrensninger — hva dataen IKKE kan brukes til.
+
+tags:                  # [valgfri] Frie nøkkelord for søk i katalogen
+  - TODO
+
+# ── 2. EIERSKAP (team + support) ──────────────────────────────────────────────
+# ODCS uttrykker eierskap via team.members med roller, og kontaktpunkter via
+# support. SB1U-profilen krever minst én member med role "Owner".
+team:
+  name: TODO           # Teamnavn, f.eks. "Risk Data"
+  description: TODO    # [valgfri] Kort om teamets ansvar
+  members:
+    - username: TODO   # E-post eller brukernavn til produkteier
+      name: TODO       # [valgfri] Fullt navn
+      role: Owner      # Må være "Owner" for den ansvarlige
+      dateIn: "TODO"   # Dato personen tok over ansvaret, f.eks. "2026-01-15"
+
+    - username: TODO   # E-post til data steward / forvalter
+      name: TODO
+      role: Data Steward
+      dateIn: "TODO"
+
+# Kontaktkanaler. SB1U-profilen krever minst én kanal med tool: email.
+support:
+  - channel: TODO      # Team-e-post, f.eks. "risk-data@sparebank1.no"
+    tool: email
+    url: TODO          # mailto:-URL til samme adresse
+    scope: interactive
+  - channel: TODO      # [valgfri] Slack-kanal, f.eks. "#dp-risk-data"
+    tool: slack
+    scope: issues
+
+# ── 3. GRENSESNITT (servers) ──────────────────────────────────────────────────
+servers:
+  - server: production
+    type: snowflake
+    environment: prod
+    account: TODO      # Snowflake-konto
+    warehouse: TODO    # Warehouse som brukes for lesing
+    database: TODO     # f.eks. RISK_DATA__PROD__MAIN
+    schema: TODO       # f.eks. SERVING
+
+# ── 4. INNHOLD (schema) ───────────────────────────────────────────────────────
+# I ODCS heter datasettene `schema` (liste av objekter) og kolonnene `properties`.
+schema:
+  - name: TODO             # Logisk navn på datasettet
+    physicalName: TODO     # Faktisk tabellnavn i Snowflake
+    physicalType: table    # table | view
+    businessName: TODO     # [valgfri] Leservennlig navn
+    description: TODO      # Hva inneholder tabellen? Én rad representerer hva?
+    dataGranularityDescription: TODO   # [valgfri] f.eks. "én rad per kunde per dag"
+    tags: []               # [valgfri]
+
+    properties:
+      - name: TODO             # Kolonnenavn
+        logicalType: string    # string | date | timestamp | time | number | integer | object | array | boolean
+        physicalType: TODO     # Faktisk Snowflake-type, f.eks. VARCHAR(20), NUMBER(18,2)
+        description: TODO      # Alle kolonner skal beskrives
+        required: true         # true = NOT NULL (erstatter det gamle "nullable")
+        unique: false
+        primaryKey: true       # Minst én property må ha primaryKey: true
+        primaryKeyPosition: 1  # 1-basert posisjon i nøkkelen, -1 hvis ikke del av nøkkel
+        classification: TODO   # public | internal | confidential | sensitive | personal_data
+        criticalDataElement: false
+        tags: []               # Bruk tag "pii" på kolonner som inneholder persondata
+
+        # Datakvalitet per kolonne. Primærnøkkel bør ha både null- og duplikatsjekk.
+        quality:
+          - metric: nullValues
+            mustBe: 0
+            dimension: completeness
+            severity: error
+            description: "Primærnøkkel skal aldri være null."
+          - metric: duplicateValues
+            mustBe: 0
+            dimension: uniqueness
+            severity: error
+            description: "Primærnøkkel skal være unik."
+
+      # Legg til flere kolonner etter behov…
+
+    # [valgfri] Kvalitetsregler på tabellnivå
+    quality:
+      - metric: rowCount
+        mustBeGreaterThan: 0
+        dimension: completeness
+        severity: error
+        description: "Tabellen skal ikke være tom."
+
+# ── 5. SLA (slaProperties) ────────────────────────────────────────────────────
+# ODCS bruker `latency` (ikke "freshness") for hvor gammel dataen kan være,
+# `frequency` for oppdateringsfrekvens og `retention` for oppbevaringstid.
+slaProperties:
+  - property: latency          # PÅKREVD — maks akseptabel forsinkelse
+    value: TODO                # f.eks. 24
+    unit: h                    # h | d | y
+    element: TODO              # "objekt.kolonne" som måles, f.eks. "kredittkunde.oppdatert_dato"
+    driver: analytics          # regulatory | analytics | operational
+
+  - property: frequency        # Oppdateringsfrekvens
+    value: 1
+    unit: d
+    element: TODO
+    scheduler: cron
+    schedule: "0 6 * * *"      # Faktisk kjøreplan
+
+  - property: retention        # PÅKREVD — oppbevaringstid
+    value: TODO                # f.eks. 7
+    unit: y                    # d | y
+    element: TODO
+    driver: regulatory
+
+  - property: availability     # [valgfri] Tilgjengelighetsmål
+    value: 99.5
+    unit: percent
+
+# ── 6. SB1U-SPESIFIKKE STYRINGSKRAV (customProperties) ────────────────────────
+# Disse egenskapsnavnene er påkrevd av SB1U-profilen og valideres av
+# validate_contracts.py. Ikke gi dem andre navn.
+customProperties:
+  - property: dataCategory            # PÅKREVD
+    value: TODO                       # public | internal | confidential | sensitive | personal_data
+
+  - property: containsPersonalData    # PÅKREVD
+    value: false                      # true | false
+
+  - property: gdprLegalBasis          # PÅKREVD hvis containsPersonalData = true
+    value: ""                         # f.eks. "legitimate_interest" | "contract" | "consent"
+
+  - property: githubTeam              # Anbefalt
+    value: TODO                       # f.eks. "@sparebank1utvikling/risk-data"
+
+  - property: consumers               # [valgfri] Kjente konsumenter
+    value:
+      - team: TODO
+        useCase: TODO
+
+# ── 7. REFERANSER (authoritativeDefinitions) ──────────────────────────────────
+authoritativeDefinitions:              # [valgfri, men anbefalt]
+  - type: canonical
+    url: TODO                          # Kontraktens plassering i Git
+    description: Kanonisk versjon av denne kontrakten.
+  - type: implementation
+    url: TODO                          # dbt-modellen som implementerer kontrakten
+    description: dbt-modell som produserer datasettet.
