@@ -4,7 +4,8 @@
 # En datakontrakt er en forpliktelse fra dataleverandør mot konsumenter, og skal
 # dekke fem dimensjoner som validate_contracts.py håndhever:
 #   1. Eierskap       — hvem svarer for leveransen (seksjon 2)
-#   2. Klassifisering — datakategori, personvern, oppbevaring (seksjon 6 + 5)
+#   2. Klassifisering — klassifiseringsnivå + kategorisering per kolonne,
+#                       personvern, oppbevaring (seksjon 4 + 6 + 5)
 #   3. Innhold        — struktur, grensesnitt, kvalitet, stabilitet (seksjon 3–5)
 #   4. Semantikk      — hva dataen betyr og hvor den kommer fra (seksjon 4 + 7)
 #   5. Versjonering   — semver, varslingsfrist, livsløp (seksjon 1 + 5 + 6)
@@ -13,8 +14,9 @@
 # Felter merket [valgfri] kan utelates, men anbefales.
 #
 # SB1U-profil: ODCS har ingen native felter for alle norske styringskrav
-# (datakategori, GDPR-rettsgrunnlag, varslingsfrist). Disse ligger som
-# customProperties med faste navn som validatoren krever — se seksjon 6.
+# (klassifisering på datasett/kontrakt, kategorisering, GDPR-rettsgrunnlag,
+# varslingsfrist). Disse ligger som customProperties med faste navn som
+# validatoren krever — se seksjon 4 (per kolonne) og seksjon 6 (per kontrakt).
 
 apiVersion: v3.1.0
 kind: DataContract
@@ -95,9 +97,31 @@ schema:
         unique: false
         primaryKey: true       # Minst én property må ha primaryKey: true
         primaryKeyPosition: 1  # 1-basert posisjon i nøkkelen, -1 hvis ikke del av nøkkel
-        classification: TODO   # public | internal | confidential | sensitive | personal_data
+        # KLASSIFISERING — påkrevd på alle kolonner. Fastsetter beskyttelsesnivå,
+        # kontrolltiltak og bruksbegrensninger.
+        #   aapen             — offentlig tilgjengelig, kan deles fritt
+        #   intern            — intern bruk, sporbar, ikke eksternt uten vurdering
+        #   fortrolig         — kun autoriserte med tjenstlig behov
+        #   strengt_fortrolig — særskilt begrenset krets, fullt sporbar
+        classification: TODO
         criticalDataElement: false
         tags: []               # Bruk tag "pii" på kolonner som inneholder persondata
+
+        # KATEGORISERING — påkrevd på alle kolonner. Manglende kategorisering er
+        # ikke tillatt. Kategoriseringen er maskinlesbart grunnlag for automatisert
+        # tilgangsstyring, logging og revisjon, og inngår ved fastsettelse av
+        # klassifiseringsnivå — men fastsetter det ikke automatisk.
+        customProperties:
+          - property: personopplysning     # PÅKREVD
+            # ingen      — inneholder ikke personopplysninger
+            # alminnelig — personopplysning etter GDPR art. 4
+            # skpo       — særlige kategorier etter GDPR art. 9 (krever strengt_fortrolig)
+            value: TODO
+          - property: personidentifikator  # PÅKREVD
+            # direkte              — kan alene identifisere en fysisk person
+            # indirekte            — bidrar sammen med andre opplysninger
+            # ikke_identifiserende — kan ikke identifisere en person
+            value: TODO
 
         # Dataavstamming: hvilke kilder kolonnen er utledet fra. Uten dette kan
         # ikke konsumenter se hvor dataen kommer fra.
@@ -130,13 +154,13 @@ schema:
         severity: error
         description: "Tabellen skal ikke være tom."
 
-    # Samlet kategori for datasettet. ODCS har `classification` kun på kolonner,
-    # så kategorien på datasettnivå uttrykkes som customProperty. Anbefalt når
-    # kontrakten leverer flere datasett med ulik sensitivitet. Den kan ikke være
-    # mindre streng enn den strengeste kolonnen under seg.
+    # Samlet klassifisering for datasettet. ODCS har `classification` kun på
+    # kolonner, så nivået på datasettnivå uttrykkes som customProperty. Anbefalt
+    # når kontrakten leverer flere datasett med ulik klassifisering. Nivået kan
+    # ikke være mindre strengt enn den strengeste kolonnen under seg.
     customProperties:
-      - property: dataCategory
-        value: TODO          # public | internal | confidential | sensitive | personal_data
+      - property: dataClassification
+        value: TODO          # aapen | intern | fortrolig | strengt_fortrolig
 
 # ── 5. SLA OG LIVSLØP (slaProperties) ─────────────────────────────────────────
 # ODCS bruker `latency` (ikke "freshness") for hvor gammel dataen kan være,
@@ -186,8 +210,8 @@ slaProperties:
 # Disse egenskapsnavnene er påkrevd av SB1U-profilen og valideres av
 # validate_contracts.py. Ikke gi dem andre navn.
 customProperties:
-  - property: dataCategory            # PÅKREVD
-    value: TODO                       # public | internal | confidential | sensitive | personal_data
+  - property: dataClassification      # PÅKREVD — samlet nivå for hele leveransen
+    value: TODO                       # aapen | intern | fortrolig | strengt_fortrolig
 
   - property: containsPersonalData    # PÅKREVD
     value: false                      # true | false

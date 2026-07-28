@@ -37,7 +37,7 @@ En datakontrakt skal definere hvilke data som leveres og hvordan de er strukture
 
 **Eierskap** — `team.name` og minst ett `team.members`-medlem med rollen `Owner` og utfylt `username`. Minst én `support`-kanal med `tool: email`. Data steward og Slack-kanal gir advarsel hvis de mangler.
 
-**Klassifisering** — `dataCategory` og `containsPersonalData` som `customProperties`, `gdprLegalBasis` hvis kontrakten inneholder persondata, og oppbevaringstid som `slaProperties[property=retention]`. Klassifisering kan angis på tre nivåer, og nivåene må henge sammen — se [Klassifisering på tre nivåer](#klassifisering-på-tre-nivåer).
+**Klassifisering** — hver kolonne skal ha et klassifiseringsnivå (`classification`) og full kategorisering (`personopplysning` + `personidentifikator`). `dataClassification` og `containsPersonalData` som `customProperties` på kontraktsnivå, `gdprLegalBasis` hvis kontrakten inneholder persondata, og oppbevaringstid som `slaProperties[property=retention]`. Se [Klassifisering og kategorisering](#klassifisering-og-kategorisering).
 
 **Innhold** — ODCS-header (`apiVersion` v3.x, `kind: DataContract`), fundamentals, `description.purpose`, en produksjonsserver med komplett konfig, `schema` med beskrevne kolonner, gyldig `logicalType` og primærnøkkel. Minst én kvalitetsregel per datasett, på tabell- eller kolonnenivå — en kontrakt uten kvalitetsregler forplikter bare på struktur. Ferskhet via `slaProperties[latency]` og stabilitet via `slaProperties[availability]`, som er påkrevd for `status: active`.
 
@@ -51,7 +51,9 @@ ODCS har ingen native felter for enkelte norske styringskrav. Disse ligger som `
 
 | customProperty | Krav | Verdier |
 | --- | --- | --- |
-| `dataCategory` | Påkrevd | `public`, `internal`, `confidential`, `sensitive`, `personal_data` |
+| `dataClassification` | Påkrevd (kontrakt + datasett) | `aapen`, `intern`, `fortrolig`, `strengt_fortrolig` |
+| `personopplysning` | Påkrevd per kolonne | `ingen`, `alminnelig`, `skpo` |
+| `personidentifikator` | Påkrevd per kolonne | `direkte`, `indirekte`, `ikke_identifiserende` |
 | `containsPersonalData` | Påkrevd | `true` / `false` (ekte boolean) |
 | `gdprLegalBasis` | Påkrevd hvis `containsPersonalData: true` | f.eks. `legitimate_interest`, `contract`, `consent` |
 | `breakingChangeNoticeDays` | Påkrevd, minst `30` | heltall, antall dager |
@@ -63,26 +65,78 @@ ODCS har ingen native felter for enkelte norske styringskrav. Disse ligger som `
 - Oppbevaringstid uttrykkes som `slaProperties[property=retention]` med `value` og `unit` (`d` eller `y`), siden ODCS har et definert felt for dette.
 - Livsløp og stabilitet uttrykkes også som `slaProperties` (`generalAvailability`, `endOfSupport`, `endOfLife`, `availability`, `timeToNotify`) i stedet for egne felter.
 - Dataavstamming ligger per kolonne i `transformSourceObjects`, med `transformDescription` som forklaring i forretningstermer.
-- PII markeres per kolonne med tag `pii` og `classification`, ikke som en sentral liste.
+- Persondata markeres per kolonne gjennom kategoriseringen (`personopplysning` + `personidentifikator`), ikke som en sentral liste. Tag `pii` kan brukes i tillegg for søk, men er ikke det normative feltet.
 - Produksjonsserveren identifiseres ved `environment: prod` (eller `server: production`).
 
 Endres disse navnene, må `datakontrakt_mal.yml` og `validate_contracts.py` oppdateres samtidig.
 
-### Klassifisering på tre nivåer
+## Klassifisering og kategorisering
 
-ODCS definerer `classification` **kun på kolonnenivå** (`schema[].properties[].classification`). Både kontraktsroten og schema-objekter avviser ukjente felter i ODCS' eget JSON-skjema, så en `classification` plassert der gjør kontrakten ugyldig — validatoren avviser det eksplisitt og peker på riktig alternativ.
+Klassifisering og kategorisering er grunnleggende mekanismer for å sikre at data håndteres i samsvar med gjeldende lover, forskrifter og interne styrende dokumenter gjennom hele dataens livssyklus. De skal ligge i metadataene og følge dataene ved lagring, behandling, analyse og deling — det er derfor de hører i datakontrakten og ikke i et sidedokument.
 
-SB1U-profilen dekker de to øvrige nivåene med `dataCategory` som `customProperty`:
+### Klassifisering
+
+Klassifisering er en vurderingsprosess hvor data inndeles etter juridiske og regulatoriske krav, grad av sensitivitet og konfidensialitet, og forretningsmessig og omdømmesmessig risiko. Nivået fastsetter hvilket beskyttelsesnivå, hvilke kontrolltiltak og hvilke bruksbegrensninger som gjelder. SB1U opererer med fire nivåer:
+
+| Nivå | Beskrivelse |
+| --- | --- |
+| `aapen` | Offentlig tilgjengelig eller kan deles fritt uten risiko. Kan distribueres internt og eksternt uten restriksjoner. |
+| `intern` | Beregnet for intern bruk, kan deles innenfor virksomheten. Skal ikke deles eksternt uten særskilt vurdering, og skal være sporbar. F.eks. produkthierarki og aggregert statistikk uten personidentifiserbare opplysninger. |
+| `fortrolig` | Kun tilgjengelig for autoriserte mottakere med tjenstlig behov. Tilgang og deling skal være begrenset og sporbar. F.eks. kundemaster og transaksjoner uten full detaljeringsgrad. |
+| `strengt_fortrolig` | Kun tilgjengelig for en særskilt, begrenset krets av autoriserte mottakere med tjenstlig behov. Tilgang og deling skal være svært begrenset og fullt sporbar. F.eks. transaksjoner med full detaljeringsgrad, kortdata og særlige kategorier personopplysninger. |
+
+Nivået angis på tre steder. ODCS definerer `classification` **kun på kolonnenivå** — både kontraktsroten og schema-objekter avviser ukjente felter i ODCS' eget JSON-skjema, så en `classification` plassert der gjør kontrakten ugyldig. Validatoren avviser det eksplisitt og peker på riktig alternativ:
 
 | Nivå | Hvor | Krav |
 | --- | --- | --- |
-| Kontrakt | `customProperties.dataCategory` | Påkrevd |
-| Datasett | `schema[].customProperties.dataCategory` | Anbefalt når kontrakten har flere datasett |
-| Kolonne | `schema[].properties[].classification` | Advarsel hvis den mangler |
+| Kontrakt | `customProperties.dataClassification` | Påkrevd |
+| Datasett | `schema[].customProperties.dataClassification` | Anbefalt; påkrevd i praksis når kontrakten har flere datasett |
+| Kolonne | `schema[].properties[].classification` | Påkrevd |
 
-**Et nivå kan ikke være mindre strengt enn innholdet under seg.** Konfidensialitetsnivåene er ordnet `public` < `internal` < `confidential` < `sensitive`. En kontrakt merket `internal` som inneholder en `confidential`-kolonne underrapporterer sin egen sensitivitet, og gir feil. Datasettnivået måles mot kolonnene sine, og kontraktsnivået mot det strengeste under seg — datasettets kategori hvis den er satt, ellers kolonnene direkte.
+**Et nivå kan ikke være mindre strengt enn innholdet under seg** (`aapen` < `intern` < `fortrolig` < `strengt_fortrolig`). En kontrakt merket `intern` som inneholder en `fortrolig`-kolonne underrapporterer sitt eget beskyttelsesbehov, og gir feil. Datasettnivået måles mot kolonnene sine, og kontraktsnivået mot det strengeste under seg — datasettets nivå hvis det er satt, ellers kolonnene direkte.
 
-`personal_data` er holdt **utenfor** denne rangeringen. Persondata er en uavhengig akse, ikke et konfidensialitetsnivå: en fødselsdato kan være både `internal` og `sensitive`, og hadde `personal_data` ligget øverst i skalaen ville én slik kolonne tvunget hele datasettet til å miste konfidensialitetsnivået sitt. Konsekvensen håndheves i stedet via `containsPersonalData`, som ikke kan være `false` når noe er klassifisert `personal_data`.
+### Kategorisering
+
+Kategorisering er den operative implementeringen av klassifiseringen. Den registreres som maskinlesbare metadata, beskriver dataelementets juridiske kategori og grad av personidentifisering, og skal være entydig og konsistent nok til å brukes til automatisert tilgangsstyring, logging og revisjon.
+
+**Alle kolonner skal ha verdi for begge attributter. Manglende kategorisering er ikke tillatt** — validatoren gir feil, ikke advarsel. ODCS har ingen felter for dette, så de ligger som `customProperties` per kolonne (tillatt via `SchemaElement`, som `SchemaProperty` arver fra).
+
+**1. `personopplysning`** — om dataelementet inneholder personopplysninger etter personopplysningsloven og GDPR:
+
+| Verdi | Beskrivelse |
+| --- | --- |
+| `ingen` | Dataelementet inneholder ikke personopplysninger |
+| `alminnelig` | Personopplysning etter GDPR artikkel 4 |
+| `skpo` | Særlige kategorier personopplysninger etter GDPR artikkel 9 |
+
+**2. `personidentifikator`** — om dataelementet kan brukes til å identifisere en fysisk person:
+
+| Verdi | Beskrivelse |
+| --- | --- |
+| `direkte` | Kan alene identifisere en fysisk person |
+| `indirekte` | Kan bidra til identifisering sammen med andre opplysninger |
+| `ikke_identifiserende` | Kan ikke benyttes til å identifisere en fysisk person |
+
+```yaml
+properties:
+  - name: kunde_id
+    classification: fortrolig
+    customProperties:
+      - property: personopplysning
+        value: alminnelig
+      - property: personidentifikator
+        value: indirekte
+```
+
+### Sammenhengen mellom dem
+
+Kategorisering fastsetter **ikke** klassifisering automatisk — den skal inngå som grunnlag ved fastsettelse av nivå etter SB1Us klassifiseringsmodell. Validatoren håndhever derfor bare de sammenhengene som er entydige:
+
+- En kolonne kategorisert `skpo` kan ikke klassifiseres lavere enn `strengt_fortrolig`.
+- En kolonne kategorisert `personopplysning: ingen` kan ikke samtidig være `direkte` eller `indirekte` identifiserende — kan den identifisere en person, inneholder den personopplysninger.
+- `containsPersonalData` på kontraktsnivå kan ikke være `false` når en kolonne er kategorisert `alminnelig` eller `skpo`.
+
+Utover dette er valg av nivå produktteamets vurdering. Produktteamet etablerer og vedlikeholder kategoriseringen som del av metadataforvaltningen, og produktleder er ansvarlig for at den er korrekt og oppdatert. Kategoriseringen skal gjennomgås ved endringer i datastruktur, behandlingsformål eller regulatoriske krav, og ved etablering av nye dataelementer. En kontraktsendring i Git med validatoren som gate i CI er stedet den gjennomgangen blir etterprøvbar.
 
 ## Bruk i dataverdikjeden
 

@@ -7,14 +7,16 @@ Spesifikasjon: https://bitol-io.github.io/open-data-contract-standard/latest/
 
 Validerer de fem dimensjonene SB1U krever at en datakontrakt dekker:
   1. Eierskap       — team.members (Owner, Data Steward), support-kanaler
-  2. Klassifisering — dataCategory, personvern, oppbevaringstid
+  2. Klassifisering — 4 klassifiseringsnivåer, kategorisering per kolonne
+                      (personopplysning + personidentifikator), oppbevaringstid
   3. Innhold        — schema/properties, grensesnitt (servers), datakvalitet, stabilitet
   4. Semantikk      — hva dataen betyr, og dataavstamming til kildene
   5. Versjonering   — semantisk versjon, varslingsfrist, livsløp (GA/EOS/EOL)
 
-ODCS definerer ikke felter for alle SB1U-spesifikke styringskrav (datakategori,
-GDPR-rettsgrunnlag, varslingsfrist). Disse ligger i customProperties med faste
-navn — se SB1U_CUSTOM_PROPS og datakontrakt_mal.yml.
+ODCS definerer ikke felter for alle SB1U-spesifikke styringskrav (klassifiseringsnivå
+på datasett/kontrakt, kategorisering per kolonne, GDPR-rettsgrunnlag, varslingsfrist).
+Disse ligger i customProperties med faste navn — se SB1U_CUSTOM_PROPS og
+datakontrakt_mal.yml.
 """
 
 import re
@@ -101,12 +103,14 @@ def _custom_props(data: dict) -> dict[str, Any]:
     }
 
 
-def _cat_rank(val: Any) -> int | None:
-    """Konfidensialitetsrangering for en kategori, eller None hvis den ikke har en.
+def _cls_rank(val: Any) -> int | None:
+    """Strenghetsrangering for et klassifiseringsnivå, None hvis ukjent."""
+    return CLASSIFICATION_RANK.get(str(val))
 
-    `personal_data` har med hensikt ingen rangering — se PERSONAL_DATA_CATEGORY.
-    """
-    return CATEGORY_RANK.get(str(val))
+
+def _cls_name(rank: int) -> str:
+    """Navnet på klassifiseringsnivået med gitt rangering."""
+    return next(c for c, r in CLASSIFICATION_RANK.items() if r == rank)
 
 
 def _sla_props(data: dict) -> dict[str, dict]:
@@ -129,27 +133,48 @@ VALID_LOGICAL_TYPES = (
     "string", "date", "timestamp", "time", "number", "integer", "object", "array", "boolean",
 )
 
-# SB1U-interne konfidensialitetsnivåer, ordnet fra minst til mest streng.
-# `classification` er fritekst i ODCS, så både listen og rangeringen er vår egen
-# innsnevring. Rangeringen brukes til å sjekke at en klassifisering aldri er
-# mindre streng enn innholdet den dekker.
-CATEGORY_RANK = {
-    "public":       0,
-    "internal":     1,
-    "confidential": 2,
-    "sensitive":    3,
+# ── KLASSIFISERING ────────────────────────────────────────────────────────────
+# SB1Us fire klassifiseringsnivåer, ordnet fra minst til mest streng. Nivået
+# fastsetter beskyttelsesnivå, kontrolltiltak og bruksbegrensninger.
+# `classification` er fritekst i ODCS, så både listen og rangeringen er SB1Us
+# egen innsnevring. Rangeringen brukes til å sjekke at en klassifisering aldri
+# er mindre streng enn innholdet den dekker.
+CLASSIFICATION_RANK = {
+    "aapen":              0,  # Offentlig tilgjengelig, kan deles fritt
+    "intern":             1,  # Intern bruk, sporbar, ikke eksternt uten vurdering
+    "fortrolig":          2,  # Kun autoriserte med tjenstlig behov
+    "strengt_fortrolig":  3,  # Særskilt begrenset krets, fullt sporbar
+}
+VALID_CLASSIFICATIONS = tuple(CLASSIFICATION_RANK)
+
+# ── KATEGORISERING ────────────────────────────────────────────────────────────
+# Kategorisering er den operative implementeringen av klassifiseringen, og skal
+# være maskinlesbar. Begge aksene er PÅKREVD på hver kolonne — manglende
+# kategorisering er ikke tillatt. Kategorisering fastsetter ikke klassifisering
+# automatisk, men er grunnlag for den.
+
+# Akse 1: inneholder dataelementet personopplysninger?
+PERSONAL_DATA_VALUES = {
+    "ingen":       "Ikke personopplysninger",
+    "alminnelig":  "Alminnelig personopplysning (GDPR art. 4)",
+    "skpo":        "Særlige kategorier personopplysninger (GDPR art. 9)",
 }
 
-# `personal_data` er ikke et konfidensialitetsnivå, men en uavhengig akse:
-# persondata kan være både internal og sensitive. Den er derfor holdt utenfor
-# rangeringen — ellers ville én fødselsdato tvunget hele datasettet til å miste
-# konfidensialitetsnivået sitt. Konsekvensen håndheves via containsPersonalData.
-PERSONAL_DATA_CATEGORY = "personal_data"
-VALID_CATEGORIES = tuple(CATEGORY_RANK) + (PERSONAL_DATA_CATEGORY,)
+# Akse 2: kan dataelementet identifisere en fysisk person?
+IDENTIFIER_VALUES = {
+    "direkte":         "Direkte identifiserende — kan alene identifisere en person",
+    "indirekte":       "Indirekte identifiserende — bidrar sammen med andre opplysninger",
+    "ikke_identifiserende": "Kan ikke benyttes til å identifisere en person",
+}
+
+# SKPO er særlige kategorier personopplysninger og krever minst dette nivået.
+SKPO_MIN_CLASSIFICATION = "strengt_fortrolig"
 
 # customProperties-navn som SB1U-profilen krever. Endres kun sammen med malen.
 SB1U_CUSTOM_PROPS = {
-    "category":         "dataCategory",
+    "classification":   "dataClassification",
+    "personal_data":    "personopplysning",
+    "identifier":       "personidentifikator",
     "pii":              "containsPersonalData",
     "gdpr":             "gdprLegalBasis",
     "github_team":      "githubTeam",
@@ -182,7 +207,7 @@ def _classification_hint(level: str) -> str:
     return (
         f"ODCS tillater ikke 'classification' på {level} — feltet finnes kun på "
         f"kolonner (schema[].properties[].classification). Bruk customProperty "
-        f"'{SB1U_CUSTOM_PROPS['category']}' på dette nivået i stedet."
+        f"'{SB1U_CUSTOM_PROPS['classification']}' på dette nivået i stedet."
     )
 
 
@@ -401,16 +426,19 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
 
     # ── 2. KLASSIFISERING ─────────────────────────────────────────────────────
     # ODCS klassifiserer per kolonne (schema[].properties[].classification).
-    # SB1U krever i tillegg en samlet datakategori og personvernstatus på
+    # SB1U krever i tillegg et samlet klassifiseringsnivå og personvernstatus på
     # kontraktsnivå — disse ligger i customProperties.
-    cat_key = f"customProperties.{SB1U_CUSTOM_PROPS['category']}"
-    cat = custom.get(SB1U_CUSTOM_PROPS["category"])
-    if _todo(cat):
-        err("klassifisering", cat_key,
-            f"Mangler datakategori (customProperty '{SB1U_CUSTOM_PROPS['category']}').")
-    elif cat not in VALID_CATEGORIES:
-        err("klassifisering", cat_key,
-            f"Ugyldig kategori '{cat}'. Gyldige: {', '.join(VALID_CATEGORIES)}.")
+    cls_key = f"customProperties.{SB1U_CUSTOM_PROPS['classification']}"
+    contract_cls = custom.get(SB1U_CUSTOM_PROPS["classification"])
+    if _todo(contract_cls):
+        err("klassifisering", cls_key,
+            f"Mangler klassifiseringsnivå (customProperty "
+            f"'{SB1U_CUSTOM_PROPS['classification']}'). Gyldige: "
+            f"{', '.join(VALID_CLASSIFICATIONS)}.")
+    elif contract_cls not in CLASSIFICATION_RANK:
+        err("klassifisering", cls_key,
+            f"Ugyldig klassifiseringsnivå '{contract_cls}'. "
+            f"Gyldige: {', '.join(VALID_CLASSIFICATIONS)}.")
 
     if "classification" in data:
         err("klassifisering", "classification", _classification_hint("kontraktsnivå"))
@@ -474,11 +502,11 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
                         f"Mangler '{srv_field}' på produksjonsserveren.")
 
     schema_objects = data.get("schema") or []
-    # Strengeste konfidensialitetsnivå observert nedover i kontrakten, brukt til å
-    # sjekke at kategorien på kontraktsnivå dekker innholdet sitt.
+    # Strengeste klassifiseringsnivå observert nedover i kontrakten, brukt til å
+    # sjekke at nivået på kontraktsnivå dekker innholdet sitt.
     max_nested_rank: int | None = None
     max_nested_source = ""
-    # Kolonner klassifisert som persondata — sjekkes mot containsPersonalData.
+    # Kolonner kategorisert som personopplysninger — mot containsPersonalData.
     personal_data_cols: list[str] = []
 
     if not isinstance(schema_objects, list) or not schema_objects:
@@ -548,89 +576,149 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
                     f"{'…' if len(bad_types) > 5 else ''}. "
                     f"Gyldige: {', '.join(VALID_LOGICAL_TYPES)}.")
 
+            # ── Klassifisering på kolonnenivå ─────────────────────────────────
+            # Klassifisering fastsetter beskyttelsesnivå og bruksbegrensninger,
+            # og er påkrevd på hver kolonne.
             unclassified = [
                 str(p.get("name", "?")) for p in valid_props if _todo(p.get("classification"))
             ]
             if unclassified:
-                warn("klassifisering", f"{prefix}.properties",
-                     f"{len(unclassified)}/{len(valid_props)} kolonner mangler classification: "
-                     f"{', '.join(unclassified[:5])}{'…' if len(unclassified) > 5 else ''}.")
+                err("klassifisering", f"{prefix}.properties",
+                    f"{len(unclassified)}/{len(valid_props)} kolonner mangler "
+                    f"classification: {', '.join(unclassified[:5])}"
+                    f"{'…' if len(unclassified) > 5 else ''}. "
+                    f"Gyldige: {', '.join(VALID_CLASSIFICATIONS)}.")
 
-            bad_col_cats = [
+            bad_col_cls = [
                 f"{p.get('name', '?')} ({p.get('classification')})"
                 for p in valid_props
                 if not _todo(p.get("classification"))
-                and p.get("classification") not in VALID_CATEGORIES
+                and p.get("classification") not in CLASSIFICATION_RANK
             ]
-            if bad_col_cats:
+            if bad_col_cls:
                 err("klassifisering", f"{prefix}.properties",
-                    f"Ugyldig classification på: {', '.join(bad_col_cats[:5])}"
-                    f"{'…' if len(bad_col_cats) > 5 else ''}. "
-                    f"Gyldige: {', '.join(VALID_CATEGORIES)}.")
+                    f"Ugyldig classification på: {', '.join(bad_col_cls[:5])}"
+                    f"{'…' if len(bad_col_cls) > 5 else ''}. "
+                    f"Gyldige: {', '.join(VALID_CLASSIFICATIONS)}.")
 
-            # ── Klassifisering på objektnivå ──────────────────────────────────
+            # ── Kategorisering på kolonnenivå ─────────────────────────────────
+            # Kategorisering er den operative implementeringen av klassifiseringen
+            # og grunnlaget for automatisert tilgangsstyring, logging og revisjon.
+            # Begge akser er påkrevd på hver kolonne — manglende kategorisering er
+            # ikke tillatt. ODCS har ingen felter for dette, så de ligger som
+            # customProperties per kolonne (tillatt via SchemaElement).
+            pd_key = SB1U_CUSTOM_PROPS["personal_data"]
+            id_key = SB1U_CUSTOM_PROPS["identifier"]
+
+            for axis_key, allowed in ((pd_key, PERSONAL_DATA_VALUES),
+                                      (id_key, IDENTIFIER_VALUES)):
+                missing, invalid = [], []
+                for p in valid_props:
+                    col = str(p.get("name", "?"))
+                    val = _custom_props(p).get(axis_key)
+                    if _todo(val):
+                        missing.append(col)
+                    elif str(val) not in allowed:
+                        invalid.append(f"{col} ({val})")
+
+                if missing:
+                    err("klassifisering", f"{prefix}.properties[].customProperties.{axis_key}",
+                        f"{len(missing)}/{len(valid_props)} kolonner mangler "
+                        f"kategorisering '{axis_key}': {', '.join(missing[:5])}"
+                        f"{'…' if len(missing) > 5 else ''}. Manglende kategorisering "
+                        f"er ikke tillatt. Gyldige: {', '.join(allowed)}.")
+                if invalid:
+                    err("klassifisering", f"{prefix}.properties[].customProperties.{axis_key}",
+                        f"Ugyldig '{axis_key}' på: {', '.join(invalid[:5])}"
+                        f"{'…' if len(invalid) > 5 else ''}. "
+                        f"Gyldige: {', '.join(allowed)}.")
+
+            # Kategoriseringen fastsetter ikke klassifiseringen automatisk, men
+            # SKPO (GDPR art. 9) kan ikke ligge under strengt fortrolig.
+            skpo_min = CLASSIFICATION_RANK[SKPO_MIN_CLASSIFICATION]
+            underclassified_skpo = [
+                f"{p.get('name', '?')} ({p.get('classification')})"
+                for p in valid_props
+                if str(_custom_props(p).get(pd_key)) == "skpo"
+                and (_cls_rank(p.get("classification")) or 0) < skpo_min
+            ]
+            if underclassified_skpo:
+                err("klassifisering", f"{prefix}.properties",
+                    f"Kolonner kategorisert som SKPO (særlige kategorier "
+                    f"personopplysninger, GDPR art. 9) er klassifisert lavere enn "
+                    f"'{SKPO_MIN_CLASSIFICATION}': "
+                    f"{', '.join(underclassified_skpo[:5])}"
+                    f"{'…' if len(underclassified_skpo) > 5 else ''}.")
+
+            # En kolonne uten personopplysninger kan ikke være identifiserende.
+            inconsistent = [
+                str(p.get("name", "?")) for p in valid_props
+                if str(_custom_props(p).get(pd_key)) == "ingen"
+                and str(_custom_props(p).get(id_key)) in ("direkte", "indirekte")
+            ]
+            if inconsistent:
+                err("klassifisering", f"{prefix}.properties",
+                    f"Kolonner er kategorisert '{pd_key}: ingen', men samtidig "
+                    f"identifiserende: {', '.join(inconsistent[:5])}"
+                    f"{'…' if len(inconsistent) > 5 else ''}. En kolonne som kan "
+                    "identifisere en person inneholder personopplysninger.")
+
+            # ── Klassifisering på datasettnivå ────────────────────────────────
             # ODCS tillater ikke `classification` på schema-objekter (kun på
-            # kolonner), så datasettets samlede kategori uttrykkes som
-            # customProperty.
+            # kolonner), så datasettets samlede nivå uttrykkes som customProperty.
             if "classification" in obj:
                 err("klassifisering", f"{prefix}.classification",
                     _classification_hint(f"datasettet '{label}'"))
 
-            obj_cat = _custom_props(obj).get(SB1U_CUSTOM_PROPS["category"])
-            obj_cat_path = f"{prefix}.customProperties.{SB1U_CUSTOM_PROPS['category']}"
+            obj_cls = _custom_props(obj).get(SB1U_CUSTOM_PROPS["classification"])
+            obj_cls_path = f"{prefix}.customProperties.{SB1U_CUSTOM_PROPS['classification']}"
 
-            # Strengeste konfidensialitetsnivå blant kolonnene. personal_data
-            # inngår ikke — den er en egen akse, se PERSONAL_DATA_CATEGORY.
             col_ranks = [
-                r for r in (_cat_rank(p.get("classification")) for p in valid_props)
+                r for r in (_cls_rank(p.get("classification")) for p in valid_props)
                 if r is not None
             ]
             strictest = max(col_ranks, default=None)
 
-            if _todo(obj_cat):
+            if _todo(obj_cls):
                 if len(schema_objects) > 1:
-                    # Med flere datasett i én kontrakt er kategorien på
-                    # kontraktsnivå ikke nok til å skille dem.
-                    warn("klassifisering", obj_cat_path,
+                    # Med flere datasett i én kontrakt er nivået på kontraktsnivå
+                    # ikke nok til å skille dem.
+                    warn("klassifisering", obj_cls_path,
                          f"Anbefalt når kontrakten har flere datasett: oppgi "
-                         f"'{SB1U_CUSTOM_PROPS['category']}' som customProperty på "
-                         f"'{label}', slik at datasett med ulik sensitivitet kan "
+                         f"'{SB1U_CUSTOM_PROPS['classification']}' som customProperty "
+                         f"på '{label}', slik at datasett med ulik klassifisering kan "
                          "skilles.")
-            elif obj_cat not in VALID_CATEGORIES:
-                err("klassifisering", obj_cat_path,
-                    f"Ugyldig kategori '{obj_cat}' på datasett '{label}'. "
-                    f"Gyldige: {', '.join(VALID_CATEGORIES)}.")
+            elif obj_cls not in CLASSIFICATION_RANK:
+                err("klassifisering", obj_cls_path,
+                    f"Ugyldig klassifiseringsnivå '{obj_cls}' på datasett '{label}'. "
+                    f"Gyldige: {', '.join(VALID_CLASSIFICATIONS)}.")
             else:
-                obj_rank = _cat_rank(obj_cat)
+                obj_rank = _cls_rank(obj_cls)
                 if obj_rank is not None and strictest is not None and obj_rank < strictest:
-                    strictest_name = next(
-                        c for c, r in CATEGORY_RANK.items() if r == strictest
-                    )
                     offenders = [
                         str(p.get("name", "?")) for p in valid_props
-                        if _cat_rank(p.get("classification")) == strictest
+                        if _cls_rank(p.get("classification")) == strictest
                     ]
-                    err("klassifisering", obj_cat_path,
-                        f"Datasett '{label}' er klassifisert '{obj_cat}', men inneholder "
-                        f"kolonner klassifisert '{strictest_name}': "
+                    err("klassifisering", obj_cls_path,
+                        f"Datasett '{label}' er klassifisert '{obj_cls}', men inneholder "
+                        f"kolonner klassifisert '{_cls_name(strictest)}': "
                         f"{', '.join(offenders[:5])}{'…' if len(offenders) > 5 else ''}. "
                         "Et datasett kan ikke være mindre strengt enn innholdet sitt.")
 
             # Kontraktsnivået måles mot det strengeste under seg — datasettets
-            # egen kategori hvis den finnes, ellers kolonnene direkte.
+            # eget nivå hvis det finnes, ellers kolonnene direkte.
             for rank, source in (
-                (_cat_rank(obj_cat), f"datasettet '{label}'"),
+                (_cls_rank(obj_cls), f"datasettet '{label}'"),
                 (strictest, f"en kolonne i '{label}'"),
             ):
                 if rank is not None and (max_nested_rank is None or rank > max_nested_rank):
                     max_nested_rank, max_nested_source = rank, source
 
+            # Kolonner med personopplysninger — sjekkes mot containsPersonalData.
             personal_data_cols += [
                 f"{label}.{p.get('name', '?')}" for p in valid_props
-                if p.get("classification") == PERSONAL_DATA_CATEGORY
+                if str(_custom_props(p).get(pd_key)) in ("alminnelig", "skpo")
             ]
-            if obj_cat == PERSONAL_DATA_CATEGORY:
-                personal_data_cols.append(label)
 
             # Kvalitetsregler kan ligge på datasettet eller på enkeltkolonner.
             # Uten dem er kontrakten en strukturbeskrivelse, ikke en forpliktelse
@@ -703,23 +791,23 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
                      "representerer.")
 
     # ── Klassifisering: samsvar mellom nivåene ────────────────────────────────
-    # Kategorien på kontraktsnivå er den konsumenter og tilgangsstyring ser først.
-    # Den må derfor dekke det strengeste innholdet under seg — ellers underrapporterer
-    # kontrakten sin egen sensitivitet.
-    cat_rank = _cat_rank(cat)
-    if cat_rank is not None and max_nested_rank is not None and cat_rank < max_nested_rank:
-        strictest_name = next(c for c, r in CATEGORY_RANK.items() if r == max_nested_rank)
-        err("klassifisering", cat_key,
-            f"Kontrakten er klassifisert '{cat}', men {max_nested_source} er "
-            f"klassifisert '{strictest_name}'. Kontraktsnivået kan ikke være "
-            "mindre strengt enn innholdet sitt.")
+    # Nivået på kontraktsnivå er det konsumenter og tilgangsstyring ser først.
+    # Det må derfor dekke det strengeste innholdet under seg — ellers underrapporterer
+    # kontrakten sitt eget beskyttelsesbehov.
+    contract_rank = _cls_rank(contract_cls)
+    if contract_rank is not None and max_nested_rank is not None and contract_rank < max_nested_rank:
+        err("klassifisering", cls_key,
+            f"Kontrakten er klassifisert '{contract_cls}', men {max_nested_source} er "
+            f"klassifisert '{_cls_name(max_nested_rank)}'. Kontraktsnivået kan ikke "
+            "være mindre strengt enn innholdet sitt.")
 
-    # personal_data er en egen akse og skal gjenspeiles i personvern-flagget,
-    # ikke i konfidensialitetsnivået.
+    # Kategoriseringen er kilden til om kontrakten inneholder personopplysninger.
+    # Personvern-flagget på kontraktsnivå må stemme med den.
     if personal_data_cols and contains_pii is False:
         err("klassifisering", pii_key,
-            f"'{SB1U_CUSTOM_PROPS['pii']}' er false, men følgende er klassifisert "
-            f"'{PERSONAL_DATA_CATEGORY}': {', '.join(personal_data_cols[:5])}"
+            f"'{SB1U_CUSTOM_PROPS['pii']}' er false, men følgende kolonner er "
+            f"kategorisert som personopplysninger: "
+            f"{', '.join(personal_data_cols[:5])}"
             f"{'…' if len(personal_data_cols) > 5 else ''}.")
 
     # ── SLA ───────────────────────────────────────────────────────────────────

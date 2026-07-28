@@ -78,9 +78,16 @@ schema:
         unique: true
         primaryKey: true
         primaryKeyPosition: 1
-        classification: confidential
+        classification: fortrolig
         criticalDataElement: true
         tags: ["pii"]
+        # Kategorisering — påkrevd på alle kolonner, grunnlag for automatisert
+        # tilgangsstyring, logging og revisjon.
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: indirekte
         transformSourceObjects:
           - core.kunde
         transformDescription: >
@@ -105,8 +112,13 @@ schema:
         required: false
         primaryKey: false
         primaryKeyPosition: -1
-        classification: personal_data
+        classification: fortrolig
         tags: ["pii"]
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: indirekte
         transformSourceObjects:
           - core.person
         transformDescription: >
@@ -120,8 +132,13 @@ schema:
         required: true
         primaryKey: false
         primaryKeyPosition: -1
-        classification: confidential
+        classification: fortrolig
         criticalDataElement: true
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: indirekte
         transformSourceObjects:
           - core.laan
           - core.kredittramme
@@ -137,8 +154,13 @@ schema:
         required: false
         primaryKey: false
         primaryKeyPosition: -1
-        classification: confidential
+        classification: fortrolig
         criticalDataElement: true
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: indirekte
         transformSourceObjects:
           - modell.pd_scoring
         transformDescription: >
@@ -153,7 +175,12 @@ schema:
         required: true
         primaryKey: false
         primaryKeyPosition: -1
-        classification: confidential
+        classification: fortrolig
+        customProperties:
+          - property: personopplysning
+            value: alminnelig
+          - property: personidentifikator
+            value: indirekte
         transformSourceObjects:
           - modell.pd_scoring
         transformDescription: >
@@ -181,7 +208,13 @@ schema:
         required: true
         primaryKey: false
         primaryKeyPosition: -1
-        classification: internal
+        classification: intern
+        # Teknisk kjøredato — ingen personopplysninger, ikke identifiserende.
+        customProperties:
+          - property: personopplysning
+            value: ingen
+          - property: personidentifikator
+            value: ikke_identifiserende
         transformSourceObjects:
           - modell.pd_scoring
         transformDescription: >
@@ -195,11 +228,11 @@ schema:
         severity: error
         description: "Tabellen skal ikke være tom."
 
-    # Samlet kategori for datasettet. ODCS har ikke `classification` på
-    # objektnivå, kun på kolonner, så kategorien uttrykkes som customProperty.
+    # Samlet klassifisering for datasettet. ODCS har ikke `classification` på
+    # objektnivå, kun på kolonner, så nivået uttrykkes som customProperty.
     customProperties:
-      - property: dataCategory
-        value: confidential
+      - property: dataClassification
+        value: fortrolig
 
 slaProperties:
   # Ferskhet og frekvens
@@ -240,8 +273,8 @@ slaProperties:
     value: "2029-10-01T00:00:00+02:00"
 
 customProperties:
-  - property: dataCategory
-    value: confidential
+  - property: dataClassification
+    value: fortrolig
   - property: containsPersonalData
     value: true
   - property: gdprLegalBasis
