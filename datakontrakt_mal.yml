@@ -130,6 +130,14 @@ schema:
         severity: error
         description: "Tabellen skal ikke være tom."
 
+    # Samlet kategori for datasettet. ODCS har `classification` kun på kolonner,
+    # så kategorien på datasettnivå uttrykkes som customProperty. Anbefalt når
+    # kontrakten leverer flere datasett med ulik sensitivitet. Den kan ikke være
+    # mindre streng enn den strengeste kolonnen under seg.
+    customProperties:
+      - property: dataCategory
+        value: TODO          # public | internal | confidential | sensitive | personal_data
+
 # ── 5. SLA OG LIVSLØP (slaProperties) ─────────────────────────────────────────
 # ODCS bruker `latency` (ikke "freshness") for hvor gammel dataen kan være,
 # `frequency` for oppdateringsfrekvens og `retention` for oppbevaringstid.

@@ -195,6 +195,12 @@ schema:
         severity: error
         description: "Tabellen skal ikke være tom."
 
+    # Samlet kategori for datasettet. ODCS har ikke `classification` på
+    # objektnivå, kun på kolonner, så kategorien uttrykkes som customProperty.
+    customProperties:
+      - property: dataCategory
+        value: confidential
+
 slaProperties:
   # Ferskhet og frekvens
   - property: latency

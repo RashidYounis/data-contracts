@@ -37,7 +37,7 @@ En datakontrakt skal definere hvilke data som leveres og hvordan de er strukture
 
 **Eierskap** — `team.name` og minst ett `team.members`-medlem med rollen `Owner` og utfylt `username`. Minst én `support`-kanal med `tool: email`. Data steward og Slack-kanal gir advarsel hvis de mangler.
 
-**Klassifisering** — `dataCategory` og `containsPersonalData` som `customProperties`, `gdprLegalBasis` hvis kontrakten inneholder persondata, og oppbevaringstid som `slaProperties[property=retention]`.
+**Klassifisering** — `dataCategory` og `containsPersonalData` som `customProperties`, `gdprLegalBasis` hvis kontrakten inneholder persondata, og oppbevaringstid som `slaProperties[property=retention]`. Klassifisering kan angis på tre nivåer, og nivåene må henge sammen — se [Klassifisering på tre nivåer](#klassifisering-på-tre-nivåer).
 
 **Innhold** — ODCS-header (`apiVersion` v3.x, `kind: DataContract`), fundamentals, `description.purpose`, en produksjonsserver med komplett konfig, `schema` med beskrevne kolonner, gyldig `logicalType` og primærnøkkel. Minst én kvalitetsregel per datasett, på tabell- eller kolonnenivå — en kontrakt uten kvalitetsregler forplikter bare på struktur. Ferskhet via `slaProperties[latency]` og stabilitet via `slaProperties[availability]`, som er påkrevd for `status: active`.
 
@@ -67,6 +67,22 @@ ODCS har ingen native felter for enkelte norske styringskrav. Disse ligger som `
 - Produksjonsserveren identifiseres ved `environment: prod` (eller `server: production`).
 
 Endres disse navnene, må `datakontrakt_mal.yml` og `validate_contracts.py` oppdateres samtidig.
+
+### Klassifisering på tre nivåer
+
+ODCS definerer `classification` **kun på kolonnenivå** (`schema[].properties[].classification`). Både kontraktsroten og schema-objekter avviser ukjente felter i ODCS' eget JSON-skjema, så en `classification` plassert der gjør kontrakten ugyldig — validatoren avviser det eksplisitt og peker på riktig alternativ.
+
+SB1U-profilen dekker de to øvrige nivåene med `dataCategory` som `customProperty`:
+
+| Nivå | Hvor | Krav |
+| --- | --- | --- |
+| Kontrakt | `customProperties.dataCategory` | Påkrevd |
+| Datasett | `schema[].customProperties.dataCategory` | Anbefalt når kontrakten har flere datasett |
+| Kolonne | `schema[].properties[].classification` | Advarsel hvis den mangler |
+
+**Et nivå kan ikke være mindre strengt enn innholdet under seg.** Konfidensialitetsnivåene er ordnet `public` < `internal` < `confidential` < `sensitive`. En kontrakt merket `internal` som inneholder en `confidential`-kolonne underrapporterer sin egen sensitivitet, og gir feil. Datasettnivået måles mot kolonnene sine, og kontraktsnivået mot det strengeste under seg — datasettets kategori hvis den er satt, ellers kolonnene direkte.
+
+`personal_data` er holdt **utenfor** denne rangeringen. Persondata er en uavhengig akse, ikke et konfidensialitetsnivå: en fødselsdato kan være både `internal` og `sensitive`, og hadde `personal_data` ligget øverst i skalaen ville én slik kolonne tvunget hele datasettet til å miste konfidensialitetsnivået sitt. Konsekvensen håndheves i stedet via `containsPersonalData`, som ikke kan være `false` når noe er klassifisert `personal_data`.
 
 ## Bruk i dataverdikjeden
 
