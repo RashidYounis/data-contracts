@@ -63,10 +63,16 @@ class ContractResult:
 
     @property
     def score(self) -> int:
-        """0–100 basert på antall feil og advarsler."""
+        """0–100 basert på antall feil og advarsler.
+
+        Advarsler har avtakende straff. En kontrakt i utkastfasen samler mange
+        advarsler for felter som først kreves ved produksjonssetting, og lineær
+        straff ville gitt den 0 poeng selv om alt påkrevd er utfylt — et misvisende
+        signal for et team som nettopp har kommet i gang.
+        """
         if not self.findings:
             return 100
-        penalty = len(self.errors) * 15 + len(self.warnings) * 5
+        penalty = len(self.errors) * 15 + min(len(self.warnings) * 5, 30)
         return max(0, 100 - penalty)
 
 
@@ -127,6 +133,11 @@ def _sla_props(data: dict) -> dict[str, dict]:
 
 # ODCS-enum for status (fundamentals). "proposed" kom inn i v3.1.0.
 VALID_STATUS = ("proposed", "draft", "active", "deprecated", "retired")
+
+# Statuser der leveransen ennå ikke er i produksjon. Her er krav som forutsetter
+# en faktisk leveranse (SLA, livsløp, lenke til implementasjonen) rådgivende —
+# se `gate` i validate_contract.
+DRAFT_STATUSES = ("proposed", "draft")
 
 # ODCS-enum for logicalType (schema).
 VALID_LOGICAL_TYPES = (
@@ -232,6 +243,21 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
     status = data.get("status", "")
     version = data.get("version", "")
 
+    # Krav som ikke kan besvares før leveransen finnes (SLA-tall, livsløpsdatoer,
+    # lenke til dbt-modellen) er rådgivende i utkast og blokkerende når kontrakten
+    # settes i produksjon. Det gjør det mulig å opprette kontrakten allerede ved
+    # hypotesen om en ny leveranse — «Data Contract First» — uten å gjette.
+    # Kjernen (eierskap, hva som leveres, klassifisering, kategorisering) er
+    # blokkerende uansett status.
+    draft_stage = status in DRAFT_STATUSES
+
+    def gate(dim: str, path: str, msg: str):
+        """Blokkerende for produksjonskontrakter, advarsel i utkast."""
+        if draft_stage:
+            warn(dim, path, f"{msg} Påkrevd før status settes til 'active'.")
+        else:
+            err(dim, path, msg)
+
     # ── ODCS-header ────────────────────────────────────────────────────────────
     api_version = str(data.get("apiVersion", ""))
     if not api_version:
@@ -285,9 +311,10 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
     notice_key = SB1U_CUSTOM_PROPS["breaking_notice"]
     notice = custom.get(notice_key)
     if _todo(notice):
-        err("versjonering", f"customProperties.{notice_key}",
-            f"Mangler varslingsfrist for breaking changes "
-            f"(customProperty '{notice_key}', minst {MIN_BREAKING_NOTICE_DAYS} dager).")
+        # Varslingsfristen betyr først noe når noen faktisk er avhengig av data.
+        gate("versjonering", f"customProperties.{notice_key}",
+             f"Mangler varslingsfrist for breaking changes "
+             f"(customProperty '{notice_key}', minst {MIN_BREAKING_NOTICE_DAYS} dager).")
     elif not isinstance(notice, int) or isinstance(notice, bool):
         err("versjonering", f"customProperties.{notice_key}",
             f"'{notice_key}' må være et heltall (antall dager), ikke '{notice}'.")
@@ -345,8 +372,8 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
                 err("semantikk", f"authoritativeDefinitions[{i}]",
                     "Ugyldig oppføring (må være YAML-objekt med type og url).")
             elif _todo(ad.get("url")):
-                err("semantikk", f"authoritativeDefinitions[{i}].url",
-                    f"Referanse #{i+1} mangler url.")
+                gate("semantikk", f"authoritativeDefinitions[{i}].url",
+                     f"Referanse #{i+1} mangler url.")
             elif ad.get("type") not in VALID_AUTH_DEF_TYPES:
                 warn("semantikk", f"authoritativeDefinitions[{i}].type",
                      f"Ukjent type '{ad.get('type')}'. ODCS definerer: "
@@ -357,9 +384,10 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
         if isinstance(ad, dict) and not _todo(ad.get("url"))
     }
     if "implementation" not in auth_types:
-        err("semantikk", "authoritativeDefinitions",
-            "Mangler dataavstamming oppstrøms: legg til en authoritativeDefinition "
-            "med type 'implementation' som peker på koden/modellen som produserer dataen.")
+        # Koden som produserer dataen finnes ikke nødvendigvis ennå i utkastfasen.
+        gate("semantikk", "authoritativeDefinitions",
+             "Mangler dataavstamming oppstrøms: legg til en authoritativeDefinition "
+             "med type 'implementation' som peker på koden/modellen som produserer dataen.")
     if "canonical" not in auth_types:
         warn("semantikk", "authoritativeDefinitions",
              "Anbefalt: oppgi type 'canonical' — hvor den gjeldende versjonen "
@@ -464,13 +492,13 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
     # Oppbevaringstid uttrykkes i ODCS som slaProperties[property=retention].
     retention = slas.get("retention")
     if not retention:
-        err("klassifisering", "slaProperties[retention]",
-            "Mangler oppbevaringstid — legg til slaProperty med property 'retention'.")
+        gate("klassifisering", "slaProperties[retention]",
+             "Mangler oppbevaringstid — legg til slaProperty med property 'retention'.")
     else:
         ret_val = retention.get("value")
         if _todo(ret_val):
-            err("klassifisering", "slaProperties[retention].value",
-                "Mangler verdi for oppbevaringstid (retention.value).")
+            gate("klassifisering", "slaProperties[retention].value",
+                 "Mangler verdi for oppbevaringstid (retention.value).")
         elif not isinstance(ret_val, (int, float)):
             err("klassifisering", "slaProperties[retention].value",
                 f"retention.value må være et tall, ikke '{ret_val}'.")
@@ -744,9 +772,9 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
             # på datakvalitet — så dette er blokkerende.
             has_quality = bool(obj.get("quality")) or any(p.get("quality") for p in valid_props)
             if not has_quality:
-                err("innhold", f"{prefix}.quality",
-                    f"Datasett '{label}' har ingen datakvalitetsregler (quality). "
-                    "Datakontrakten må forplikte på kvalitet, ikke bare struktur.")
+                gate("innhold", f"{prefix}.quality",
+                     f"Datasett '{label}' har ingen datakvalitetsregler (quality). "
+                     "Datakontrakten må forplikte på kvalitet, ikke bare struktur.")
 
             # Primærnøkkelen bærer entydigheten i leveransen og skal alltid være
             # dekket av både null- og duplikatsjekk.
@@ -768,7 +796,7 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
             ]
             if no_business_name:
                 pct = len(no_business_name) / len(valid_props) * 100
-                report = err if pct > 75 else warn
+                report = gate if pct > 75 else warn
                 report("semantikk", f"{prefix}.properties",
                        f"{len(no_business_name)}/{len(valid_props)} kolonner mangler "
                        f"businessName (forretningsbegrep): "
@@ -779,9 +807,9 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
             # transformSourceObjects (hvilke kilder kolonnen er utledet fra).
             with_lineage = [p for p in valid_props if p.get("transformSourceObjects")]
             if not with_lineage:
-                err("semantikk", f"{prefix}.properties",
-                    f"Datasett '{label}' har ingen dataavstamming — ingen kolonne oppgir "
-                    "transformSourceObjects. Konsumenter må kunne se hvor dataen kommer fra.")
+                gate("semantikk", f"{prefix}.properties",
+                     f"Datasett '{label}' har ingen dataavstamming — ingen kolonne oppgir "
+                     "transformSourceObjects. Konsumenter må kunne se hvor dataen kommer fra.")
             elif len(with_lineage) < len(valid_props):
                 missing_lineage = [
                     str(p.get("name", "?")) for p in valid_props
@@ -830,22 +858,24 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
             f"{'…' if len(personal_data_cols) > 5 else ''}.")
 
     # ── SLA ───────────────────────────────────────────────────────────────────
+    # SLA-tall kan ikke settes seriøst før man vet hvordan leveransen faktisk
+    # oppfører seg, så de er rådgivende i utkast.
     if not slas:
-        err("innhold", "slaProperties",
-            "Mangler SLA-blokk (slaProperties). ODCS v3 bruker 'slaProperties', ikke 'sla'.")
+        gate("innhold", "slaProperties",
+             "Mangler SLA-blokk (slaProperties). ODCS v3 bruker 'slaProperties', ikke 'sla'.")
     else:
         latency = slas.get("latency")
         if not latency:
-            err("innhold", "slaProperties[latency]",
-                "Mangler ferskhet-SLA — legg til slaProperty med property 'latency' "
-                "(ODCS foretrekker 'latency' over 'freshness').")
+            gate("innhold", "slaProperties[latency]",
+                 "Mangler ferskhet-SLA — legg til slaProperty med property 'latency' "
+                 "(ODCS foretrekker 'latency' over 'freshness').")
         else:
             if _todo(latency.get("value")):
-                err("innhold", "slaProperties[latency].value",
-                    "Mangler maks. akseptabel forsinkelse (latency.value).")
+                gate("innhold", "slaProperties[latency].value",
+                     "Mangler maks. akseptabel forsinkelse (latency.value).")
             if _todo(latency.get("unit")):
-                err("innhold", "slaProperties[latency].unit",
-                    "Mangler enhet for latency (latency.unit), f.eks. 'h' eller 'd'.")
+                gate("innhold", "slaProperties[latency].unit",
+                     "Mangler enhet for latency (latency.unit), f.eks. 'h' eller 'd'.")
             if _todo(latency.get("element")):
                 warn("innhold", "slaProperties[latency].element",
                      "Anbefalt: oppgi hvilken kolonne latency måles på (latency.element).")
@@ -1093,8 +1123,11 @@ def build_report_html(results: list[ContractResult]) -> str:
 
 <div class="legend">
   <span><b>E</b> = feil (blokkerende) &nbsp;·&nbsp; <b>A</b> = advarsel (anbefaling)</span>
-  <span><b>Score</b>: 100 − 15×feil − 5×advarsler, min 0</span>
+  <span><b>Score</b>: 100 − 15×feil − advarsler (maks 30), min 0</span>
   <span><b>Dimensjoner</b>: {' · '.join(DIM_LABELS.values())}</span>
+  <span><b>proposed/draft</b>: krav som forutsetter en ferdig leveranse (SLA,
+    livsløp, kvalitetsregler, dataavstamming) er advarsler. De blir blokkerende
+    når status settes til <b>active</b>.</span>
 </div>
 
 <div class="toolbar">

@@ -4,38 +4,53 @@ Datakontrakter for SB1U, basert på [ODCS v3.1.0](https://bitol-io.github.io/ope
 
 En datakontrakt definerer en forpliktelse fra en dataleverandør mot sine konsumenter: hvilke data som leveres, hvordan de er strukturert, hva de betyr, hvilken kvalitet og stabilitet som kan forventes, hvilke grensesnitt som støttes og hvordan versjonsendringer håndteres. Kontrakten forutsetter at eierskapet til dataleveransen er entydig plassert.
 
+## Kom i gang
+
+```bash
+pip install -r requirements.txt
+cp datakontrakt_mal_enkel.yml contracts/mitt_dataprodukt.yml
+# fyll ut TODO-feltene
+python validate_contracts.py
+```
+
+Den første kontrakten din trenger bare dette:
+
+- **Hvem eier den** — teamnavn, e-post til produkteier, en team-e-post
+- **Hva leveres** — datasettnavn, og for hver kolonne: navn, type og beskrivelse
+- **Klassifisering** — nivå per kolonne og for leveransen som helhet
+- **Kategorisering** — `personopplysning` og `personidentifikator` per kolonne
+- **Hvor den ligger** — Snowflake-server
+
+Behold `status: draft` til leveransen faktisk er i produksjon. Da er SLA, livsløpsdatoer, kvalitetsregler, dataavstamming og referanselenker **advarsler** — nyttige å fylle ut, men de stopper deg ikke. Det gjør det mulig å opprette kontrakten allerede når du har en hypotese om en ny leveranse, uten å gjette på tall du ikke kan vite ennå.
+
+Når du setter `status: active`, blir de samme kravene blokkerende. Det er den kontrollerte overgangen: kontrakten må være komplett før noen kan ta avhengigheter på leveransen i produksjon.
+
 ## Innhold
 
 | Fil | Beskrivelse |
 | --- | --- |
-| `datakontrakt_mal.yml` | Mal for nye datakontrakter. Kopiér denne og fyll ut alle `TODO`-felter. |
+| `datakontrakt_mal_enkel.yml` | **Start her.** Minimumsmal — alt som kreves for en `draft`. |
+| `datakontrakt_mal.yml` | Fullstendig mal med alle felter og forklaringer. Bruk den når du skal til `active`. |
 | `contracts/` | Datakontrakter, én YAML-fil per dataprodukt. |
+| `contracts/example_kredittkunde_serving.yml` | Enkelt eksempel med ett datasett. |
 | `contracts/example_betaling_kategorisering.yml` | Eksempel som viser hele klassifiserings- og kategoriseringsmodellen: to datasett med ulikt beskyttelsesbehov, alle fire nivåer, alle kategoriverdier og SKPO. |
-| `contracts/example_kredittkunde_serving.yml` | Enklere eksempel med ett datasett. |
 | `validate_contracts.py` | Validerer alle kontrakter i `contracts/` og skriver en HTML-statusrapport. |
 
-## Bruk
-
-```bash
-pip install -r requirements.txt
-python validate_contracts.py
-```
-
-Validatoren skriver en oversikt til terminalen og en rapport til `contracts_report.html`. Den avslutter med exit-kode 1 hvis én eller flere kontrakter har feil, slik at den kan brukes direkte som en gate i CI.
-
-### Legge til en ny kontrakt
-
-```bash
-cp datakontrakt_mal.yml contracts/mitt_dataprodukt.yml
-# fyll ut alle TODO-felter
-python validate_contracts.py
-```
-
-Filer i `contracts/` som starter med `_` hoppes over.
+Validatoren skriver en oversikt til terminalen og en rapport til `contracts_report.html`. Den avslutter med exit-kode 1 hvis én eller flere kontrakter har feil, slik at den kan brukes direkte som en gate i CI. Filer i `contracts/` som starter med `_` hoppes over.
 
 ## Valideringsregler
 
 En datakontrakt skal definere hvilke data som leveres og hvordan de er strukturert, hva dataen betyr, hvilken kvalitet og stabilitet som kan forventes, hvilke grensesnitt som støttes og hvordan versjonsendringer håndteres — alt forankret i et entydig eierskap. Validatoren håndhever dette som fem dimensjoner. Feil (`E`) er blokkerende, advarsler (`A`) er anbefalinger.
+
+Kravene avhenger av `status`. Reglene under er beskrevet slik de gjelder for en **aktiv** kontrakt. I `proposed` og `draft` er kravene merket 🕓 advarsler i stedet for feil:
+
+| Krav | `draft` | `active` |
+| --- | --- | --- |
+| Eierskap, kolonner med beskrivelse, klassifisering, kategorisering, server | Feil | Feil |
+| 🕓 SLA (`latency`), oppbevaringstid, varslingsfrist | Advarsel | Feil |
+| 🕓 Kvalitetsregler per datasett | Advarsel | Feil |
+| 🕓 Dataavstamming (`transformSourceObjects`), `implementation`-referanse | Advarsel | Feil |
+| 🕓 `businessName` på over 75 % av kolonnene | Advarsel | Feil |
 
 **Eierskap** — `team.name` og minst ett `team.members`-medlem med rollen `Owner` og utfylt `username`. Minst én `support`-kanal med `tool: email`. Data steward og Slack-kanal gir advarsel hvis de mangler.
 

@@ -1,0 +1,82 @@
+# Datakontrakt — minimumsmal for å komme i gang.
+#
+# Dette er alt som kreves for en kontrakt med status `draft`. Kopiér filen,
+# fyll ut TODO-feltene, og kjør `python validate_contracts.py`.
+#
+# Trenger du de valgfrie feltene (SLA, livsløp, referanser, kvalitetsregler),
+# se datakontrakt_mal.yml — den er den fullstendige malen med forklaringer.
+# Alt der er anbefalt i draft, men PÅKREVD før du setter status til `active`.
+
+apiVersion: v3.1.0
+kind: DataContract
+
+# ── Hva er dette? ─────────────────────────────────────────────────────────────
+id: TODO                 # Unik ID, f.eks. "urn:datacontract:dp-mitt-team:kunde"
+name: TODO               # Teknisk navn, f.eks. "kunde_serving_v1"
+version: "0.1.0"
+status: draft            # Behold `draft` til leveransen er i produksjon
+domain: TODO             # Forretningsdomene, f.eks. "risiko"
+tenant: SB1U
+
+description:
+  purpose: TODO          # Hva inneholder dataproduktet, og hva er det laget for?
+
+# ── Hvem eier det? ────────────────────────────────────────────────────────────
+team:
+  name: TODO             # Teamnavn
+  members:
+    - username: TODO     # E-post til produkteier
+      role: Owner
+
+support:
+  - channel: TODO        # Team-e-post
+    tool: email
+
+# ── Hvor ligger dataen? ───────────────────────────────────────────────────────
+servers:
+  - server: production
+    type: snowflake
+    environment: prod
+    account: TODO
+    warehouse: TODO
+    database: TODO
+    schema: TODO
+
+# ── Hva leveres? ──────────────────────────────────────────────────────────────
+schema:
+  - name: TODO           # Logisk navn på datasettet
+    description: TODO    # Hva inneholder tabellen? Hva representerer én rad?
+
+    properties:
+      - name: TODO
+        logicalType: string   # string | date | timestamp | time | number | integer | object | array | boolean
+        description: TODO
+        required: true
+        primaryKey: true      # Minst én kolonne må ha primaryKey: true
+        primaryKeyPosition: 1
+
+        # Klassifisering — hvilket beskyttelsesnivå gjelder for denne kolonnen?
+        #   aapen | intern | fortrolig | strengt_fortrolig
+        classification: TODO
+
+        # Kategorisering — påkrevd på alle kolonner, ingen unntak.
+        customProperties:
+          - property: personopplysning      # ingen | alminnelig | skpo
+            value: TODO
+          - property: personidentifikator   # direkte | indirekte | ikke_identifiserende
+            value: TODO
+
+      # Gjenta for hver kolonne i leveransen…
+
+# ── Klassifisering av leveransen som helhet ───────────────────────────────────
+# Kan ikke være mindre streng enn den strengeste kolonnen over.
+customProperties:
+  - property: dataClassification
+    value: TODO          # aapen | intern | fortrolig | strengt_fortrolig
+  - property: containsPersonalData
+    value: false         # true hvis noen kolonne har personopplysning != ingen
+
+  # Påkrevd hvis containsPersonalData er true — hvilket rettsgrunnlag behandles
+  # personopplysningene på? F.eks. contract, legitimate_interest, consent.
+  - property: gdprLegalBasis
+    value: ""
