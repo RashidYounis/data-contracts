@@ -105,7 +105,8 @@ schema:
         #   strengt_fortrolig — særskilt begrenset krets, fullt sporbar
         classification: TODO
         criticalDataElement: false
-        tags: []               # Bruk tag "pii" på kolonner som inneholder persondata
+        tags: []               # [valgfri] Frie nøkkelord. Ikke dupliser
+                               # kategoriseringen under som tags.
 
         # KATEGORISERING — påkrevd på alle kolonner. Manglende kategorisering er
         # ikke tillatt. Kategoriseringen er maskinlesbart grunnlag for automatisert

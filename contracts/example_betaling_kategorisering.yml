@@ -128,7 +128,6 @@ schema:
         primaryKeyPosition: -1
         classification: strengt_fortrolig
         criticalDataElement: true
-        tags: ["pii"]
         # Et kontonummer kan alene identifisere en fysisk person.
         customProperties:
           - property: personopplysning
@@ -149,7 +148,6 @@ schema:
         primaryKey: false
         primaryKeyPosition: -1
         classification: strengt_fortrolig
-        tags: ["pii"]
         customProperties:
           - property: personopplysning
             value: alminnelig
@@ -173,7 +171,6 @@ schema:
         # SKPO kan ikke klassifiseres lavere enn strengt_fortrolig.
         classification: strengt_fortrolig
         criticalDataElement: true
-        tags: ["pii"]
         customProperties:
           - property: personopplysning
             value: skpo

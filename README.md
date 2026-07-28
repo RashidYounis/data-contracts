@@ -67,7 +67,7 @@ ODCS har ingen native felter for enkelte norske styringskrav. Disse ligger som `
 - Oppbevaringstid uttrykkes som `slaProperties[property=retention]` med `value` og `unit` (`d` eller `y`), siden ODCS har et definert felt for dette.
 - Livsløp og stabilitet uttrykkes også som `slaProperties` (`generalAvailability`, `endOfSupport`, `endOfLife`, `availability`, `timeToNotify`) i stedet for egne felter.
 - Dataavstamming ligger per kolonne i `transformSourceObjects`, med `transformDescription` som forklaring i forretningstermer.
-- Persondata markeres per kolonne gjennom kategoriseringen (`personopplysning` + `personidentifikator`), ikke som en sentral liste. Tag `pii` kan brukes i tillegg for søk, men er ikke det normative feltet.
+- Persondata markeres per kolonne gjennom kategoriseringen (`personopplysning` + `personidentifikator`), ikke som en sentral liste og ikke som tags. En `pii`-tag ville duplisert kategoriseringen med mindre presisjon, og to kilder til samme faktum kommer før eller senere i utakt.
 - Produksjonsserveren identifiseres ved `environment: prod` (eller `server: production`).
 
 Endres disse navnene, må `datakontrakt_mal.yml` og `validate_contracts.py` oppdateres samtidig.

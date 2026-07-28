@@ -170,6 +170,10 @@ IDENTIFIER_VALUES = {
 # SKPO er særlige kategorier personopplysninger og krever minst dette nivået.
 SKPO_MIN_CLASSIFICATION = "strengt_fortrolig"
 
+# Tags som dupliserer kategoriseringen. Personvernstatus per kolonne skal ha én
+# kilde — aksene over — så disse gir advarsel i stedet for å leve side om side.
+REDUNDANT_PII_TAGS = frozenset({"pii", "gdpr", "personopplysning", "persondata"})
+
 # customProperties-navn som SB1U-profilen krever. Endres kun sammen med malen.
 SB1U_CUSTOM_PROPS = {
     "classification":   "dataClassification",
@@ -649,6 +653,21 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
                     f"'{SKPO_MIN_CLASSIFICATION}': "
                     f"{', '.join(underclassified_skpo[:5])}"
                     f"{'…' if len(underclassified_skpo) > 5 else ''}.")
+
+            # Kategoriseringen er eneste kilde til personvernstatus per kolonne.
+            # En tag som «pii» dupliserer den med mindre presisjon, og to kilder
+            # til samme faktum kommer før eller senere i utakt.
+            tagged_pii = [
+                str(p.get("name", "?")) for p in valid_props
+                if any(str(t).strip().lower() in REDUNDANT_PII_TAGS
+                       for t in (p.get("tags") or []))
+            ]
+            if tagged_pii:
+                warn("klassifisering", f"{prefix}.properties[].tags",
+                     f"Kolonner har personvern-tag som dupliserer kategoriseringen: "
+                     f"{', '.join(tagged_pii[:5])}"
+                     f"{'…' if len(tagged_pii) > 5 else ''}. Fjern tagen — "
+                     f"'{pd_key}' og '{id_key}' er de normative feltene.")
 
             # En kolonne uten personopplysninger kan ikke være identifiserende.
             inconsistent = [

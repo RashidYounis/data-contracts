@@ -80,7 +80,6 @@ schema:
         primaryKeyPosition: 1
         classification: fortrolig
         criticalDataElement: true
-        tags: ["pii"]
         # Kategorisering — påkrevd på alle kolonner, grunnlag for automatisert
         # tilgangsstyring, logging og revisjon.
         customProperties:
@@ -113,7 +112,6 @@ schema:
         primaryKey: false
         primaryKeyPosition: -1
         classification: fortrolig
-        tags: ["pii"]
         customProperties:
           - property: personopplysning
             value: alminnelig
