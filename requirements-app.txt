@@ -1,0 +1,6 @@
+# Avhengigheter for utfyllingsappen (app.py).
+# Validatoren og CI trenger bare requirements.txt — appen installeres separat,
+# slik at CI-kjøringen forblir rask.
+-r requirements.txt
+streamlit>=1.40
+pandas>=2.0

@@ -24,6 +24,12 @@ jobs:
       - name: Valider kontrakter
         run: python validate_contracts.py
 
+      # Appen installeres ikke i CI (streamlit ligger i requirements-app.txt, som
+      # holdes utenfor for at gaten skal være rask). Vi sjekker likevel at filen
+      # kompilerer, så en syntaksfeil i utfyllingsappen ikke går upåaktet hen.
+      - name: Sjekk at utfyllingsappen kompilerer
+        run: python -m compileall -q app.py
+
       - name: Last opp HTML-rapport
         if: always()
         uses: actions/upload-artifact@v4

@@ -6,6 +6,17 @@ En datakontrakt definerer en forpliktelse fra en dataleverandør mot sine konsum
 
 ## Kom i gang
 
+Skal du fylle ut din første kontrakt, bruk appen — den er et skjema, og du trenger ikke skrive YAML:
+
+```bash
+pip install -r requirements-app.txt
+streamlit run app.py
+```
+
+Appen åpner i nettleseren på `http://localhost:8501`. Du fyller ut skjemaet, ser feil og advarsler oppdatere seg mens du skriver, og laster ned en ferdig YAML-fil du legger i `contracts/`. Den bruker samme validator som CI, så en kontrakt som er grønn i appen er grønn i CI.
+
+Foretrekker du å redigere YAML direkte:
+
 ```bash
 pip install -r requirements.txt
 cp datakontrakt_mal_enkel.yml contracts/mitt_dataprodukt.yml
@@ -29,7 +40,8 @@ Når du setter `status: active`, blir de samme kravene blokkerende. Det er den k
 
 | Fil | Beskrivelse |
 | --- | --- |
-| `datakontrakt_mal_enkel.yml` | **Start her.** Minimumsmal — alt som kreves for en `draft`. |
+| `app.py` | **Start her.** Utfyllingsapp — skjema i nettleseren, ingen YAML. `streamlit run app.py` |
+| `datakontrakt_mal_enkel.yml` | Minimumsmal for deg som vil redigere YAML — alt som kreves for en `draft`. |
 | `datakontrakt_mal.yml` | Fullstendig mal med alle felter og forklaringer. Bruk den når du skal til `active`. |
 | `contracts/` | Datakontrakter, én YAML-fil per dataprodukt. |
 | `contracts/example_kredittkunde_serving.yml` | Enkelt eksempel med ett datasett. |
@@ -37,6 +49,23 @@ Når du setter `status: active`, blir de samme kravene blokkerende. Det er den k
 | `validate_contracts.py` | Validerer alle kontrakter i `contracts/` og skriver en HTML-statusrapport. |
 
 Validatoren skriver en oversikt til terminalen og en rapport til `contracts_report.html`. Den avslutter med exit-kode 1 hvis én eller flere kontrakter har feil, slik at den kan brukes direkte som en gate i CI. Filer i `contracts/` som starter med `_` hoppes over.
+
+## Utfyllingsappen
+
+`app.py` er et skjema for å opprette og endre datakontrakter uten å skrive YAML. Den er laget for produkteiere og andre som eier innholdet i en kontrakt, men ikke nødvendigvis skriver kode.
+
+```bash
+pip install -r requirements-app.txt
+streamlit run app.py
+```
+
+Appen er delt i de fem spørsmålene en kontrakt svarer på — hva er dette, hvem eier det, hvor ligger dataen, hva leveres, hvor beskyttet er det. Kolonnene redigeres som et regneark, med nedtrekksmenyer for klassifisering og kategorisering, slik at man ikke trenger å kjenne maskinverdiene: skjemaet viser «Strengt fortrolig» og skriver `strengt_fortrolig`. Hva hver verdi betyr står i tegnforklaringen under tabellen.
+
+I sidepanelet står en levende status: antall feil, antall advarsler og score, oppdatert for hvert tastetrykk. Avvikene listes under skjemaet, med hvilken dimensjon og hvilket felt de gjelder. Nedlastingsknappen er sperret så lenge kontrakten har feil, så en fil som kommer ut av appen validerer også i CI. Appen importerer `validate_contract` fra `validate_contracts.py` — det er samme kode, ikke en kopi av reglene, så de kan ikke komme i utakt.
+
+Felter som ikke kreves i utkastfasen ligger bak «Valgfritt»-seksjoner. En førstegangsbruker ser dermed bare de feltene en `draft` faktisk trenger.
+
+En eksisterende kontrakt kan lastes inn fra sidepanelet — enten fra `contracts/` eller som opplastet fil — endres i skjemaet og lastes ned igjen. Appen skriver ikke til `contracts/` selv: den gir deg en fil du legger inn og committer, slik at endringen går gjennom Git og CI som alle andre endringer.
 
 ## Valideringsregler
 
