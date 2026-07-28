@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """
-Datakontrakt-validator: leser alle YAML-kontrakter i catalog/contracts/,
-validerer innhold mot ODCS v3.1.0 + SB1U-profilen, og genererer en HTML-statusrapport.
+Datakontrakt-validator: leser alle YAML-kontrakter i contracts/, validerer dem
+mot ODCS v3.1.0 + SB1U-profilen, og genererer en HTML-statusrapport.
 
 Spesifikasjon: https://bitol-io.github.io/open-data-contract-standard/latest/
 
-Fokuserer på tre dimensjoner:
+Validerer de fem dimensjonene SB1U krever at en datakontrakt dekker:
   1. Eierskap       — team.members (Owner, Data Steward), support-kanaler
-  2. Klassifisering — dataCategory, personvern, retention (slaProperties)
-  3. Innhold        — schema/properties, servers, SLA
+  2. Klassifisering — dataCategory, personvern, oppbevaringstid
+  3. Innhold        — schema/properties, grensesnitt (servers), datakvalitet, stabilitet
+  4. Semantikk      — hva dataen betyr, og dataavstamming til kildene
+  5. Versjonering   — semantisk versjon, varslingsfrist, livsløp (GA/EOS/EOL)
 
-ODCS definerer ikke felter for SB1U-spesifikke styringskrav (datakategori,
-GDPR-rettsgrunnlag). Disse ligger i customProperties med faste navn —
-se SB1U_CUSTOM_PROPS og catalog/datakontrakt_mal.yml.
+ODCS definerer ikke felter for alle SB1U-spesifikke styringskrav (datakategori,
+GDPR-rettsgrunnlag, varslingsfrist). Disse ligger i customProperties med faste
+navn — se SB1U_CUSTOM_PROPS og datakontrakt_mal.yml.
 """
 
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,7 +31,7 @@ import yaml
 @dataclass
 class ValidationFinding:
     severity: str   # "error" | "warning"
-    dimension: str  # "eierskap" | "klassifisering" | "innhold"
+    dimension: str  # nøkkel i DIM_LABELS
     field_path: str
     message: str
 
@@ -120,11 +123,25 @@ VALID_CATEGORIES = ("public", "internal", "confidential", "sensitive", "personal
 
 # customProperties-navn som SB1U-profilen krever. Endres kun sammen med malen.
 SB1U_CUSTOM_PROPS = {
-    "category":    "dataCategory",
-    "pii":         "containsPersonalData",
-    "gdpr":        "gdprLegalBasis",
-    "github_team": "githubTeam",
+    "category":         "dataCategory",
+    "pii":              "containsPersonalData",
+    "gdpr":             "gdprLegalBasis",
+    "github_team":      "githubTeam",
+    "breaking_notice":  "breakingChangeNoticeDays",
 }
+
+# Minimum varslingsfrist (dager) før en breaking change kan settes i produksjon.
+# Konsumenter må ha reell tid til å tilpasse seg.
+MIN_BREAKING_NOTICE_DAYS = 30
+
+# authoritativeDefinitions.type-verdier som ODCS definerer.
+VALID_AUTH_DEF_TYPES = (
+    "businessDefinition", "videoTutorial", "transformationImplementation",
+    "implementation", "canonical", "privacy-statement", "schema",
+)
+
+# Semantisk versjon — kontrakten må kunne versjonshåndteres maskinelt.
+SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+")
 
 
 def validate_contract(data: dict, filepath: Path) -> ContractResult:
@@ -165,8 +182,6 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
     if status not in VALID_STATUS:
         err("innhold", "status",
             f"Ugyldig status '{status}'. Gyldige verdier: {', '.join(VALID_STATUS)}.")
-    if _todo(version):
-        warn("innhold", "version", "Mangler versjon (version).")
 
     description = data.get("description") or {}
     if not isinstance(description, dict):
@@ -185,6 +200,103 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
 
     if _todo(data.get("domain")):
         warn("innhold", "domain", "Anbefalt: oppgi forretningsdomene (domain).")
+
+    # ── VERSJONERING ──────────────────────────────────────────────────────────
+    # Kontrakten skal kunne versjonshåndteres maskinelt, og konsumenter skal
+    # kjenne livsløpet til leveransen før de tar avhengigheter på den.
+    if _todo(version):
+        err("versjonering", "version", "Mangler versjon (version).")
+    elif not SEMVER_RE.match(str(version)):
+        err("versjonering", "version",
+            f"Versjon '{version}' er ikke semantisk (MAJOR.MINOR.PATCH). "
+            "Semver er nødvendig for å skille breaking fra bakoverkompatible endringer.")
+
+    notice_key = SB1U_CUSTOM_PROPS["breaking_notice"]
+    notice = custom.get(notice_key)
+    if _todo(notice):
+        err("versjonering", f"customProperties.{notice_key}",
+            f"Mangler varslingsfrist for breaking changes "
+            f"(customProperty '{notice_key}', minst {MIN_BREAKING_NOTICE_DAYS} dager).")
+    elif not isinstance(notice, int) or isinstance(notice, bool):
+        err("versjonering", f"customProperties.{notice_key}",
+            f"'{notice_key}' må være et heltall (antall dager), ikke '{notice}'.")
+    elif notice < MIN_BREAKING_NOTICE_DAYS:
+        err("versjonering", f"customProperties.{notice_key}",
+            f"Varslingsfrist på {notice} dager er kortere enn minimumskravet på "
+            f"{MIN_BREAKING_NOTICE_DAYS} dager. Konsumenter må ha tid til å tilpasse seg.")
+
+    # Livsløp uttrykkes i ODCS som slaProperties: generalAvailability,
+    # endOfSupport, endOfLife. En oppføring med uutfylt value teller ikke.
+    def _lifecycle_date(prop: str) -> Any:
+        entry = slas.get(prop)
+        if not entry or _todo(entry.get("value")):
+            return None
+        return entry.get("value")
+
+    if status == "active" and not _lifecycle_date("generalAvailability"):
+        warn("versjonering", "slaProperties[generalAvailability].value",
+             "Anbefalt for aktive kontrakter: oppgi slaProperty 'generalAvailability' "
+             "(når leveransen ble/blir allment tilgjengelig).")
+
+    if status in ("deprecated", "retired"):
+        # Ved avvikling er livsløpsdatoene selve avviklingsplanen konsumentene
+        # planlegger etter — da er de ikke lenger valgfrie.
+        for prop, label in (("endOfSupport", "slutt på support"),
+                            ("endOfLife", "endelig avvikling")):
+            if not _lifecycle_date(prop):
+                err("versjonering", f"slaProperties[{prop}].value",
+                    f"Status er '{status}' — da må dato for {label} oppgis "
+                    f"(slaProperty '{prop}').")
+    else:
+        for prop in ("endOfSupport", "endOfLife"):
+            if not _lifecycle_date(prop):
+                warn("versjonering", f"slaProperties[{prop}].value",
+                     f"Anbefalt: oppgi slaProperty '{prop}' så konsumenter kjenner "
+                     "leveransens livsløp.")
+
+    eos, eol = _lifecycle_date("endOfSupport"), _lifecycle_date("endOfLife")
+    if eos and eol and str(eol) < str(eos):
+        err("versjonering", "slaProperties[endOfLife].value",
+            f"endOfLife ({eol}) er før endOfSupport ({eos}). "
+            "Leveransen kan ikke avvikles før supporten opphører.")
+
+    # ── SEMANTIKK OG DATAAVSTAMMING ───────────────────────────────────────────
+    # Kontrakten skal fortelle hva dataen betyr, ikke bare hvordan den ser ut,
+    # og vise hvor den kommer fra.
+    auth_defs = data.get("authoritativeDefinitions") or []
+    if not isinstance(auth_defs, list):
+        err("semantikk", "authoritativeDefinitions",
+            "authoritativeDefinitions må være en liste av {type, url}.")
+        auth_defs = []
+    else:
+        for i, ad in enumerate(auth_defs):
+            if not isinstance(ad, dict):
+                err("semantikk", f"authoritativeDefinitions[{i}]",
+                    "Ugyldig oppføring (må være YAML-objekt med type og url).")
+            elif _todo(ad.get("url")):
+                err("semantikk", f"authoritativeDefinitions[{i}].url",
+                    f"Referanse #{i+1} mangler url.")
+            elif ad.get("type") not in VALID_AUTH_DEF_TYPES:
+                warn("semantikk", f"authoritativeDefinitions[{i}].type",
+                     f"Ukjent type '{ad.get('type')}'. ODCS definerer: "
+                     f"{', '.join(VALID_AUTH_DEF_TYPES)}.")
+
+    auth_types = {
+        ad.get("type") for ad in auth_defs
+        if isinstance(ad, dict) and not _todo(ad.get("url"))
+    }
+    if "implementation" not in auth_types:
+        err("semantikk", "authoritativeDefinitions",
+            "Mangler dataavstamming oppstrøms: legg til en authoritativeDefinition "
+            "med type 'implementation' som peker på koden/modellen som produserer dataen.")
+    if "canonical" not in auth_types:
+        warn("semantikk", "authoritativeDefinitions",
+             "Anbefalt: oppgi type 'canonical' — hvor den gjeldende versjonen "
+             "av kontrakten bor.")
+    if "businessDefinition" not in auth_types:
+        warn("semantikk", "authoritativeDefinitions",
+             "Anbefalt: oppgi type 'businessDefinition' — lenke til begrepsapparat "
+             "eller definisjonskatalog som forklarer hva dataen betyr.")
 
     # ── 1. EIERSKAP ────────────────────────────────────────────────────────────
     team = data.get("team") or {}
@@ -393,10 +505,74 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
                      f"{', '.join(unclassified[:5])}{'…' if len(unclassified) > 5 else ''}.")
 
             # Kvalitetsregler kan ligge på datasettet eller på enkeltkolonner.
+            # Uten dem er kontrakten en strukturbeskrivelse, ikke en forpliktelse
+            # på datakvalitet — så dette er blokkerende.
             has_quality = bool(obj.get("quality")) or any(p.get("quality") for p in valid_props)
             if not has_quality:
-                warn("innhold", f"{prefix}.quality",
-                     f"Datasett '{label}' har ingen datakvalitetsregler (quality).")
+                err("innhold", f"{prefix}.quality",
+                    f"Datasett '{label}' har ingen datakvalitetsregler (quality). "
+                    "Datakontrakten må forplikte på kvalitet, ikke bare struktur.")
+
+            # Primærnøkkelen bærer entydigheten i leveransen og skal alltid være
+            # dekket av både null- og duplikatsjekk.
+            pk_props = [p for p in valid_props if p.get("primaryKey") is True]
+            for p in pk_props:
+                metrics = {
+                    q.get("metric") for q in (p.get("quality") or [])
+                    if isinstance(q, dict)
+                }
+                missing = {"nullValues", "duplicateValues"} - metrics
+                if missing:
+                    warn("innhold", f"{prefix}.properties",
+                         f"Primærnøkkel '{p.get('name', '?')}' mangler kvalitetsregel: "
+                         f"{', '.join(sorted(missing))}.")
+
+            # ── Semantikk på kolonnenivå ──────────────────────────────────────
+            no_business_name = [
+                str(p.get("name", "?")) for p in valid_props if _todo(p.get("businessName"))
+            ]
+            if no_business_name:
+                pct = len(no_business_name) / len(valid_props) * 100
+                report = err if pct > 75 else warn
+                report("semantikk", f"{prefix}.properties",
+                       f"{len(no_business_name)}/{len(valid_props)} kolonner mangler "
+                       f"businessName (forretningsbegrep): "
+                       f"{', '.join(no_business_name[:5])}"
+                       f"{'…' if len(no_business_name) > 5 else ''}.")
+
+            # Dataavstamming per kolonne: ODCS uttrykker dette med
+            # transformSourceObjects (hvilke kilder kolonnen er utledet fra).
+            with_lineage = [p for p in valid_props if p.get("transformSourceObjects")]
+            if not with_lineage:
+                err("semantikk", f"{prefix}.properties",
+                    f"Datasett '{label}' har ingen dataavstamming — ingen kolonne oppgir "
+                    "transformSourceObjects. Konsumenter må kunne se hvor dataen kommer fra.")
+            elif len(with_lineage) < len(valid_props):
+                missing_lineage = [
+                    str(p.get("name", "?")) for p in valid_props
+                    if not p.get("transformSourceObjects")
+                ]
+                warn("semantikk", f"{prefix}.properties",
+                     f"{len(missing_lineage)}/{len(valid_props)} kolonner mangler "
+                     f"transformSourceObjects: {', '.join(missing_lineage[:5])}"
+                     f"{'…' if len(missing_lineage) > 5 else ''}.")
+
+            # Utledede kolonner bør forklares i forretningstermer, ikke bare SQL.
+            undocumented_transforms = [
+                str(p.get("name", "?")) for p in valid_props
+                if p.get("transformLogic") and _todo(p.get("transformDescription"))
+            ]
+            if undocumented_transforms:
+                warn("semantikk", f"{prefix}.properties",
+                     f"Kolonner med transformLogic mangler transformDescription "
+                     f"(forklaring i forretningstermer): "
+                     f"{', '.join(undocumented_transforms[:5])}"
+                     f"{'…' if len(undocumented_transforms) > 5 else ''}.")
+
+            if _todo(obj.get("dataGranularityDescription")):
+                warn("semantikk", f"{prefix}.dataGranularityDescription",
+                     f"Anbefalt: beskriv granularitet for '{label}' — hva én rad "
+                     "representerer.")
 
     # ── SLA ───────────────────────────────────────────────────────────────────
     if not slas:
@@ -427,6 +603,24 @@ def validate_contract(data: dict, filepath: Path) -> ContractResult:
             warn("innhold", "slaProperties[frequency].schedule",
                  "Anbefalt: oppgi faktisk kjøreplan (frequency.schedule).")
 
+        # Stabilitet er et eget krav i SB1U-definisjonen, ved siden av
+        # datakvalitet. For aktive leveranser må konsumenter vite hvor
+        # pålitelig leveransen er, ikke bare hvor fersk.
+        availability = slas.get("availability")
+        if not availability:
+            report = err if status == "active" else warn
+            report("innhold", "slaProperties[availability]",
+                   "Mangler tilgjengelighetsmål (slaProperty 'availability'). "
+                   "Kontrakten skal forplikte på stabilitet, ikke bare ferskhet.")
+        elif _todo(availability.get("value")):
+            err("innhold", "slaProperties[availability].value",
+                "Mangler verdi for tilgjengelighetsmål (availability.value).")
+
+        if not slas.get("timeToNotify"):
+            warn("innhold", "slaProperties[timeToNotify]",
+                 "Anbefalt: oppgi hvor raskt konsumenter varsles ved avvik "
+                 "(slaProperty 'timeToNotify').")
+
     domain = data.get("domain")
     return ContractResult(
         file=filepath,
@@ -450,10 +644,13 @@ STATUS_COLORS = {
     "retired":    ("#f1f5f9", "#475569"),
 }
 
+# Rekkefølgen styrer visningen av dimensjonsmerker i rapporten.
 DIM_LABELS = {
     "eierskap":       "Eierskap",
     "klassifisering": "Klassifisering",
     "innhold":        "Innhold",
+    "semantikk":      "Semantikk",
+    "versjonering":   "Versjonering",
 }
 
 
@@ -475,7 +672,7 @@ def render_contract_row(r: ContractResult) -> str:
         dim_counts[f.dimension][f.severity] += 1
 
     dim_badges = ""
-    for dim in ("eierskap", "klassifisering", "innhold"):
+    for dim in DIM_LABELS:
         counts = dim_counts.get(dim, {})
         errs = counts.get("error", 0)
         warns = counts.get("warning", 0)
@@ -613,7 +810,7 @@ def build_report_html(results: list[ContractResult]) -> str:
 
 <div class="header">
   <h1>Datakontrakts-rapport</h1>
-  <p>ODCS v3.1.0 + SB1U-profil — eierskap, klassifisering og innhold</p>
+  <p>ODCS v3.1.0 + SB1U-profil — {' · '.join(DIM_LABELS.values())}</p>
 </div>
 
 <div class="stats">
@@ -642,7 +839,7 @@ def build_report_html(results: list[ContractResult]) -> str:
 <div class="legend">
   <span><b>E</b> = feil (blokkerende) &nbsp;·&nbsp; <b>A</b> = advarsel (anbefaling)</span>
   <span><b>Score</b>: 100 − 15×feil − 5×advarsler, min 0</span>
-  <span><b>Dimensjoner</b>: Eierskap · Klassifisering · Innhold</span>
+  <span><b>Dimensjoner</b>: {' · '.join(DIM_LABELS.values())}</span>
 </div>
 
 <div class="toolbar">

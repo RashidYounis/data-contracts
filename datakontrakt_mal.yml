@@ -1,13 +1,20 @@
 # Datakontraktsmal — ODCS v3.1.0 (Open Data Contract Standard, Bitol/LF AI & Data)
 # Spesifikasjon: https://bitol-io.github.io/open-data-contract-standard/latest/
 #
-# Fokus: eierskap, klassifisering og nødvendig innhold for dataprodukter.
+# En datakontrakt er en forpliktelse fra dataleverandør mot konsumenter, og skal
+# dekke fem dimensjoner som validate_contracts.py håndhever:
+#   1. Eierskap       — hvem svarer for leveransen (seksjon 2)
+#   2. Klassifisering — datakategori, personvern, oppbevaring (seksjon 6 + 5)
+#   3. Innhold        — struktur, grensesnitt, kvalitet, stabilitet (seksjon 3–5)
+#   4. Semantikk      — hva dataen betyr og hvor den kommer fra (seksjon 4 + 7)
+#   5. Versjonering   — semver, varslingsfrist, livsløp (seksjon 1 + 5 + 6)
+#
 # Fyll ut alle felter merket med TODO.
 # Felter merket [valgfri] kan utelates, men anbefales.
 #
-# SB1U-profil: ODCS har ingen native felter for norske styringskrav
-# (datakategori, GDPR-rettsgrunnlag). Disse ligger som customProperties med
-# faste navn som validate_contracts.py krever — se seksjon 6.
+# SB1U-profil: ODCS har ingen native felter for alle norske styringskrav
+# (datakategori, GDPR-rettsgrunnlag, varslingsfrist). Disse ligger som
+# customProperties med faste navn som validatoren krever — se seksjon 6.
 
 apiVersion: v3.1.0
 kind: DataContract
@@ -65,19 +72,22 @@ servers:
     database: TODO     # f.eks. EXAMPLE_DB__PROD__MAIN
     schema: TODO       # f.eks. SERVING
 
-# ── 4. INNHOLD (schema) ───────────────────────────────────────────────────────
+# ── 4. INNHOLD OG SEMANTIKK (schema) ──────────────────────────────────────────
 # I ODCS heter datasettene `schema` (liste av objekter) og kolonnene `properties`.
+# Denne seksjonen dekker både struktur (hva feltene er) og semantikk (hva de
+# betyr, og hvor de kommer fra).
 schema:
   - name: TODO             # Logisk navn på datasettet
     physicalName: TODO     # Faktisk tabellnavn i Snowflake
     physicalType: table    # table | view
     businessName: TODO     # [valgfri] Leservennlig navn
     description: TODO      # Hva inneholder tabellen? Én rad representerer hva?
-    dataGranularityDescription: TODO   # [valgfri] f.eks. "én rad per kunde per dag"
+    dataGranularityDescription: TODO   # Granularitet, f.eks. "én rad per kunde per dag"
     tags: []               # [valgfri]
 
     properties:
       - name: TODO             # Kolonnenavn
+        businessName: TODO     # Forretningsbegrep — hva kolonnen heter for folk
         logicalType: string    # string | date | timestamp | time | number | integer | object | array | boolean
         physicalType: TODO     # Faktisk Snowflake-type, f.eks. VARCHAR(20), NUMBER(18,2)
         description: TODO      # Alle kolonner skal beskrives
@@ -89,7 +99,14 @@ schema:
         criticalDataElement: false
         tags: []               # Bruk tag "pii" på kolonner som inneholder persondata
 
-        # Datakvalitet per kolonne. Primærnøkkel bør ha både null- og duplikatsjekk.
+        # Dataavstamming: hvilke kilder kolonnen er utledet fra. Uten dette kan
+        # ikke konsumenter se hvor dataen kommer fra.
+        transformSourceObjects:
+          - TODO               # f.eks. "core.kunde"
+        transformDescription: TODO   # Hva som skjer med dataen, i forretningstermer
+        transformLogic: ""     # [valgfri] SQL-uttrykket, hvis nyttig
+
+        # Datakvalitet per kolonne. Primærnøkkel skal ha både null- og duplikatsjekk.
         quality:
           - metric: nullValues
             mustBe: 0
@@ -104,7 +121,8 @@ schema:
 
       # Legg til flere kolonner etter behov…
 
-    # [valgfri] Kvalitetsregler på tabellnivå
+    # Kvalitetsregler på tabellnivå. Minst én kvalitetsregel — på tabell eller
+    # kolonne — er påkrevd: kontrakten skal forplikte på kvalitet, ikke bare struktur.
     quality:
       - metric: rowCount
         mustBeGreaterThan: 0
@@ -112,10 +130,11 @@ schema:
         severity: error
         description: "Tabellen skal ikke være tom."
 
-# ── 5. SLA (slaProperties) ────────────────────────────────────────────────────
+# ── 5. SLA OG LIVSLØP (slaProperties) ─────────────────────────────────────────
 # ODCS bruker `latency` (ikke "freshness") for hvor gammel dataen kan være,
 # `frequency` for oppdateringsfrekvens og `retention` for oppbevaringstid.
 slaProperties:
+  # Ferskhet og frekvens
   - property: latency          # PÅKREVD — maks akseptabel forsinkelse
     value: TODO                # f.eks. 24
     unit: h                    # h | d | y
@@ -129,15 +148,31 @@ slaProperties:
     scheduler: cron
     schedule: "0 6 * * *"      # Faktisk kjøreplan
 
+  # Stabilitet — påkrevd for status: active
+  - property: availability     # Tilgjengelighetsmål
+    value: 99.5
+    unit: percent
+
+  - property: timeToNotify     # Hvor raskt konsumenter varsles ved avvik
+    value: TODO                # f.eks. 4
+    unit: h
+    driver: operational
+
+  # Oppbevaring
   - property: retention        # PÅKREVD — oppbevaringstid
     value: TODO                # f.eks. 7
     unit: y                    # d | y
     element: TODO
     driver: regulatory
 
-  - property: availability     # [valgfri] Tilgjengelighetsmål
-    value: 99.5
-    unit: percent
+  # Livsløp — grunnlaget for versjonshåndtering og avvikling.
+  # endOfSupport og endOfLife er PÅKREVD når status er deprecated eller retired.
+  - property: generalAvailability
+    value: TODO                # ISO-tidspunkt, f.eks. "2026-10-01T00:00:00+02:00"
+  - property: endOfSupport
+    value: TODO
+  - property: endOfLife
+    value: TODO
 
 # ── 6. SB1U-SPESIFIKKE STYRINGSKRAV (customProperties) ────────────────────────
 # Disse egenskapsnavnene er påkrevd av SB1U-profilen og valideres av
@@ -152,6 +187,9 @@ customProperties:
   - property: gdprLegalBasis          # PÅKREVD hvis containsPersonalData = true
     value: ""                         # f.eks. "legitimate_interest" | "contract" | "consent"
 
+  - property: breakingChangeNoticeDays  # PÅKREVD — minst 30
+    value: 90                           # Dager konsumenter varsles før en breaking change
+
   - property: githubTeam              # Anbefalt
     value: TODO                       # f.eks. "@example-org/example-data-team"
 
@@ -160,11 +198,22 @@ customProperties:
       - team: TODO
         useCase: TODO
 
-# ── 7. REFERANSER (authoritativeDefinitions) ──────────────────────────────────
-authoritativeDefinitions:              # [valgfri, men anbefalt]
-  - type: canonical
-    url: TODO                          # Kontraktens plassering i Git
-    description: Kanonisk versjon av denne kontrakten.
+# ── 7. REFERANSER OG SEMANTIKK (authoritativeDefinitions) ─────────────────────
+# `implementation` er PÅKREVD — den utgjør dataavstammingen oppstrøms og viser
+# hvilken kode som produserer leveransen.
+authoritativeDefinitions:
   - type: implementation
     url: TODO                          # dbt-modellen som implementerer kontrakten
-    description: dbt-modell som produserer datasettet.
+    description: dbt-modell som produserer datasettet — oppstrøms dataavstamming.
+
+  - type: canonical                    # Anbefalt
+    url: TODO                          # Kontraktens plassering i Git
+    description: Kanonisk versjon av denne kontrakten.
+
+  - type: businessDefinition           # Anbefalt — hva dataen betyr
+    url: TODO                          # Begrepskatalog eller definisjonskilde
+    description: Begrepsapparat som forklarer innholdet.
+
+  - type: privacy-statement            # [valgfri, anbefalt ved persondata]
+    url: TODO
+    description: Personvernerklæring for behandlingen.
